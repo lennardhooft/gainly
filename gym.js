@@ -198,14 +198,36 @@ window.GainlyGym = function (core) {
   const exById = (id) => exAll().find((e) => e.id === id) || { id, name: id.startsWith('db:') ? id.slice(3).replace(/_/g, ' ') : 'Unknown exercise', group: 'Other', type: 'kg' };
 
   // Earlier Hevy imports created custom exercises that now exist in the library: link them up.
+  // Own exercise names from Hevy (typos and nicknames) → the matching exercise in the library.
+  const ALIASES = {
+    'Cable Preacjer Curl': 'preacher-c',
+    'preacher hammer Curl': 'db:Preacher_Hammer_Dumbbell_Curl',
+    'Peacher Hammer Dumbbell': 'db:Preacher_Hammer_Dumbbell_Curl',
+    'Forearm Curls': 'wristcurl',
+    'Behind The Back Forearm': 'wristcurl-behind',
+    'Seated Dip Machine': 'db:Dip_Machine',
+    'single arm bench row': 'row-db',
+    'Romanian deadlift smith machine': 'db:Smith_Machine_Stiff-Legged_Deadlift',
+  };
+  // Own exercises that stay custom, but with a tidier name.
+  const RENAME = { 'Jm Press Op Chest Press': 'JM Press (Chest Press Machine)' };
+  const niceName = (t) => RENAME[t] || Object.entries(RENAME).find(([k]) => norm(k) === norm(t))?.[1] || t;
+  const aliasMap = () => new Map(Object.entries(ALIASES).map(([k, v]) => [norm(k), v]));
+
   function migrateCustoms() {
     const g = G();
     const byName = new Map(LIB.map((e) => [norm(e.name), e.id]));
+    for (const [k, v] of aliasMap()) byName.set(k, v);
     const remap = new Map();
-    for (const c of g.custom) { const id = byName.get(norm(c.name)); if (id) remap.set(c.id, id); }
-    if (!remap.size) return;
+    let renamed = false;
+    for (const c of g.custom) {
+      const id = byName.get(norm(c.name));
+      if (id) remap.set(c.id, id);
+      else if (niceName(c.name) !== c.name) { c.name = niceName(c.name); renamed = true; }
+    }
+    if (!remap.size) { if (renamed) core.save(); return; }
     const fix = (items) => items && items.forEach((it) => { if (remap.has(it.exId)) it.exId = remap.get(it.exId); });
-    g.workouts.forEach((w) => fix(w.items));
+    g.workouts.forEach((w) => { fix(w.items); fix(w.prs); });
     g.routines.forEach((r) => fix(r.items));
     if (g.active) fix(g.active.items);
     g.custom = g.custom.filter((c) => !remap.has(c.id));
@@ -934,6 +956,7 @@ window.GainlyGym = function (core) {
       const byName = new Map();
       for (const e of [...DBEX].reverse()) byName.set(norm(e.name), e.id);
       for (const e of [...LIB, ...g.custom]) byName.set(norm(e.name), e.id);
+      for (const [k, v] of aliasMap()) byName.set(k, v);
       const created = [];
       const TYPE = { warmup: 'w', dropset: 'd', failure: 'f' };
       const routines = list.filter((r) => r && r.title && Array.isArray(r.exercises)).map((r) => ({
@@ -945,7 +968,7 @@ window.GainlyGym = function (core) {
           if (!exId) {
             const sets = e.sets || [];
             const type = sets.some((s) => s.weight_kg) ? 'kg' : sets.some((s) => s.duration_seconds) ? 'time' : 'bw';
-            const c = { id: 'c-' + uid(), name: title || 'Exercise', group: guessGroup(title), type };
+            const c = { id: 'c-' + uid(), name: niceName(title) || 'Exercise', group: guessGroup(title), type };
             g.custom.push(c); created.push(c); exId = c.id; byName.set(norm(title), exId);
           }
           const sets = (e.sets || []).slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
@@ -993,6 +1016,8 @@ window.GainlyGym = function (core) {
       const byName = new Map();
       for (const e of [...DBEX].reverse()) byName.set(norm(e.name), e.id);
       for (const e of [...LIB, ...g.custom]) byName.set(norm(e.name), e.id);
+      for (const [k, v] of aliasMap()) byName.set(k, v);
+      for (const c of g.custom) for (const [from, to] of Object.entries(RENAME)) if (c.name === to) byName.set(norm(from), c.id);
       const created = [];
       const map = new Map();
       for (const r of rows) {
@@ -1008,7 +1033,7 @@ window.GainlyGym = function (core) {
         const title = r[C.ex].trim();
         let exId = byName.get(norm(title));
         if (!exId) {
-          const c = { id: 'c-' + uid(), name: title, group: guessGroup(title), type: 'kg' };
+          const c = { id: 'c-' + uid(), name: niceName(title), group: guessGroup(title), type: 'kg' };
           g.custom.push(c); created.push(c);
           exId = c.id; byName.set(norm(title), exId);
         }
