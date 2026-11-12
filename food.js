@@ -362,10 +362,166 @@ window.GainlyFood = function (core) {
           ${ring('Fat', tot.fat || 0, gg.fat, 'ring--f')}
         </div>
       </div>
-      ${(() => { const r = rateDay(iso); return `<button type="button" class="button day-sum${r && r.level ? ' rate--' + r.level : ''}" data-f="summary">${r && r.level ? `<span class="rate__dot"></span>${r.live ? 'So far: ' : ''}${RATE_LABEL[r.level]} · ` : ''}Day summary</button>`; })()}
+      <div class="sum-row">
+        ${(() => { const r = rateDay(iso); return `<button type="button" class="button day-sum${r && r.level ? ' rate--' + r.level : ''}" data-f="summary">${r && r.level ? `<span class="rate__dot"></span>${r.live ? 'So far: ' : ''}${RATE_LABEL[r.level]}` : 'Day summary'}</button>`; })()}
+        <button type="button" class="button" data-f="stats">Week & month</button>
+      </div>
       ${MEALS.map(([k, l]) => mealHTML(k, l, d)).join('')}
       ${waterHTML(d)}
       <p class="hint" style="text-align:center">Food data: Open Food Facts (open database).</p>`;
+  }
+
+  /* ---------------- Sheet: week & month overview + maintenance ---------------- */
+  const statsSheet = $('#foodStats');
+  const st = { mode: 'week', anchor: null };
+  const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00'); return addDays(iso, -((d.getDay() + 6) % 7)); };
+  function periodDays() {
+    const a = st.anchor || todayISO();
+    let from, to;
+    if (st.mode === 'week') { from = mondayOf(a); to = addDays(from, 6); }
+    else { from = a.slice(0, 8) + '01'; const n = new Date(+a.slice(0, 4), +a.slice(5, 7), 0).getDate(); to = a.slice(0, 8) + String(n).padStart(2, '0'); }
+    const days = [];
+    for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+    return { from, to, days };
+  }
+  const DF_MONTH = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
+  const DF_DAYMON = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+  const dfmt = (iso, f) => f.format(new Date(iso + 'T12:00:00'));
+  const RATE_COLOR = { good: 'var(--good)', ok: '#d9a441', poor: 'var(--bad)' };
+
+  function weights(fromISO, toISO) {
+    return (core.state.entries || []).filter((e) => e.values && e.values.weight != null && e.date >= fromISO && e.date <= toISO)
+      .map((e) => ({ date: e.date, w: +e.values.weight })).filter((x) => Number.isFinite(x.w)).sort((a, b) => a.date.localeCompare(b.date));
+  }
+  // Maintenance = average intake − (weight change × 7700 kcal per kg), over the last 28 days
+  function estimateMaintenance() {
+    const to = todayISO(), from = addDays(to, -27);
+    const logged = [];
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      if (d === to && new Date().getHours() < 20) continue; // today isn't finished
+      const e = dayEntries(peekDay(d));
+      if (e.length) logged.push(sumN(e).n.kcal || 0);
+    }
+    const ws = weights(from, to);
+    const span = ws.length >= 2 ? daysBetweenISO(ws[0].date, ws[ws.length - 1].date) : 0;
+    const need = { days: logged.length, weighIns: ws.length, span };
+    if (logged.length < 14 || ws.length < 3 || span < 10) return { ok: false, ...need };
+    const t0 = ws[0].date;
+    const xs = ws.map((x) => daysBetweenISO(t0, x.date)), ys = ws.map((x) => x.w);
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / Math.max(1e-9, xs.reduce((a, x) => a + (x - mx) ** 2, 0)); // kg per day
+    const intake = logged.reduce((a, b) => a + b, 0) / logged.length;
+    const tdee = intake - slope * 7700;
+    const current = my + slope * (xs[xs.length - 1] - mx);
+    return { ok: true, ...need, intake, slope, tdee, current, ws, t0, mx, my, from, to };
+  }
+  function daysBetweenISO(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5); }
+
+  function openStats() { st.mode = st.mode || 'week'; st.anchor = curDay(); renderStats(); statsSheet.showModal(); $('#foodStatsBody').scrollTop = 0; }
+  function renderStats() {
+    const { from, to, days } = periodDays();
+    const today = todayISO();
+    const gg = goalGrams();
+    const rows = days.map((d) => {
+      const e = dayEntries(peekDay(d));
+      const n = e.length ? sumN(e).n : null;
+      const r = e.length && d <= today ? rateDay(d) : null;
+      return { d, n, level: r && !r.live ? r.level : null, live: r && r.live, future: d > today };
+    });
+    const logged = rows.filter((r) => r.n && !(r.d === today && r.live));
+    const avg = (k) => (logged.length ? logged.reduce((a, r) => a + (r.n[k] || 0), 0) / logged.length : null);
+    const cnt = { good: 0, ok: 0, poor: 0 };
+    for (const r of rows) if (r.level) cnt[r.level]++;
+    const rated = cnt.good + cnt.ok + cnt.poor;
+    const label = st.mode === 'week' ? `${dfmt(from, DF_DAYMON)} – ${dfmt(to, DF_DAYMON)}` : dfmt(from, DF_MONTH);
+    const pastDays = rows.filter((r) => !r.future).length;
+
+    // bar chart: kcal per day, goal as a dashed line, bar colour = day rating
+    const W = 343, H = 150, padB = 20, padT = 8, n = rows.length, gap = n > 10 ? 2 : 6;
+    const bw = (W - gap * (n - 1)) / n;
+    const maxV = Math.max(gg.kcal * 1.25, ...rows.map((r) => (r.n ? r.n.kcal || 0 : 0)));
+    const y = (v) => padT + (H - padB - padT) * (1 - v / maxV);
+    const bars = rows.map((r, i) => {
+      const x = i * (bw + gap), v = r.n ? r.n.kcal || 0 : 0;
+      const col = r.level ? RATE_COLOR[r.level] : 'var(--faint)';
+      const lab = st.mode === 'week' ? 'MTWTFSS'[i] : (i % 7 === 0 ? String(i + 1) : '');
+      return `<g class="st-bar" data-f="stats-day" data-d="${r.d}">
+        <rect x="${x}" y="${padT}" width="${bw}" height="${H - padB - padT}" fill="transparent"/>
+        ${v ? `<rect x="${x}" y="${y(v)}" width="${bw}" height="${Math.max(2, H - padB - y(v))}" rx="${Math.min(4, bw / 2)}" fill="${col}"${r.live ? ' opacity=".5"' : ''}><title>${dfmt(r.d, DF_DAYMON)}: ${Math.round(v)} kcal</title></rect>` : `<rect x="${x}" y="${H - padB - 2}" width="${bw}" height="2" rx="1" fill="var(--border)"/>`}
+        ${lab ? `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${lab}</text>` : ''}
+      </g>`;
+    }).join('');
+    const chart = `<svg class="st-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Calories per day">
+      ${bars}<line x1="0" x2="${W}" y1="${y(gg.kcal)}" y2="${y(gg.kcal)}" class="st-goal"/><text x="${W}" y="${y(gg.kcal) - 4}" text-anchor="end" class="st-goal-t">goal ${nfmt(gg.kcal, 'kcal')}</text></svg>`;
+
+    const tile = (v, unit, label, sub) => `<div class="st-tile"><strong>${v}</strong><small>${unit}</small><span>${label}</span>${sub ? `<em>${sub}</em>` : ''}</div>`;
+    const kc = avg('kcal'), pr = avg('protein');
+    $('#foodStatsBody').innerHTML = `
+      <div class="segmented segmented--full" role="group" aria-label="Period" style="margin-bottom:12px">
+        <button type="button" data-f="stats-mode" data-m="week" aria-pressed="${st.mode === 'week'}">Week</button>
+        <button type="button" data-f="stats-mode" data-m="month" aria-pressed="${st.mode === 'month'}">Month</button>
+      </div>
+      <div class="day-nav" style="margin-bottom:12px">
+        <button type="button" class="cal__nav" data-f="stats-step" data-s="-1" aria-label="Previous">‹</button>
+        <span class="day-nav__label" style="pointer-events:none">${label}</span>
+        <button type="button" class="cal__nav" data-f="stats-step" data-s="1" aria-label="Next"${to >= today ? ' disabled' : ''}>›</button>
+      </div>
+      <div class="st-tiles">
+        ${tile(kc != null ? nfmt(kc, 'kcal') : '—', 'kcal', 'Avg per day', kc != null ? `${Math.round((kc / gg.kcal) * 100)}% of goal` : '')}
+        ${tile(pr != null ? Math.round(pr) : '—', 'g', 'Avg protein', pr != null ? `${Math.round((pr / gg.protein) * 100)}% of goal` : '')}
+        ${tile(`${logged.length}<small>/${pastDays}</small>`, '', 'Days logged', '')}
+      </div>
+      <div class="card st-card">
+        <h3 class="section-title" style="margin:0 0 8px">Calories per day</h3>
+        ${chart}
+        <div class="st-legend"><span><i style="background:var(--good)"></i>Good</span><span><i style="background:#d9a441"></i>Average</span><span><i style="background:var(--bad)"></i>Poor</span><span><i class="dash"></i>Goal</span></div>
+        <p class="hint" style="margin:6px 0 0">Tap a day to open it in your diary.</p>
+      </div>
+      <div class="card st-card">
+        <h3 class="section-title" style="margin:0 0 10px">Day ratings</h3>
+        ${rated ? `<div class="st-stack" role="img" aria-label="${cnt.good} good, ${cnt.ok} average, ${cnt.poor} poor">${['good', 'ok', 'poor'].filter((k) => cnt[k]).map((k) => `<i style="flex:${cnt[k]};background:${RATE_COLOR[k]}"></i>`).join('')}</div>
+        <div class="st-counts">${['good', 'ok', 'poor'].map((k) => `<div><span class="rate__dot" style="--rc:${RATE_COLOR[k]}"></span><b>${cnt[k]}</b> ${RATE_LABEL[k].replace(' day', '').toLowerCase()}</div>`).join('')}</div>`
+        : '<p class="hint" style="margin:0">No finished days with food logged in this period yet.</p>'}
+        ${logged.length ? `<p class="st-macros">Avg macros: ${macroLine({ protein: avg('protein'), carbs: avg('carbs'), fat: avg('fat') })} g</p>` : ''}
+      </div>
+      ${maintenanceHTML()}`;
+  }
+  function maintenanceHTML() {
+    const m = estimateMaintenance();
+    const bulk = core.state.settings && core.state.settings.goalType === 'bulk';
+    if (!m.ok) return `<div class="card st-card">
+      <h3 class="section-title" style="margin:0 0 6px">Your maintenance calories</h3>
+      <p class="prose" style="margin:0">Gainly can estimate how many calories you really burn by comparing what you eat with how your weight changes. It needs, in the last 4 weeks:</p>
+      <ul class="st-need">
+        <li class="${m.days >= 14 ? 'is-done' : ''}">14+ days with food logged <b>(${m.days})</b></li>
+        <li class="${m.weighIns >= 3 ? 'is-done' : ''}">3+ weigh-ins under Body <b>(${m.weighIns})</b></li>
+        <li class="${m.span >= 10 ? 'is-done' : ''}">at least 10 days between the first and last weigh-in <b>(${m.span})</b></li>
+      </ul></div>`;
+    const perWeek = m.slope * 7;
+    const rate = bulk ? 0.0025 : -0.005; // bulk +0.25 % per week, cut −0.5 % per week
+    const target = Math.round((m.tdee + (rate * m.current * 7700) / 7) / 10) * 10;
+    // small weight chart with trend line
+    const W = 343, H = 90, pad = 6;
+    const xs = m.ws.map((x) => daysBetweenISO(m.from, x.date)), ys = m.ws.map((x) => x.w);
+    const lo = Math.min(...ys) - 0.3, hi = Math.max(...ys) + 0.3;
+    const X = (d) => pad + (W - 2 * pad) * (d / 27), Y = (v) => pad + (H - 2 * pad) * (1 - (v - lo) / (hi - lo));
+    const t0 = daysBetweenISO(m.from, m.t0);
+    const ty = (d) => m.my + m.slope * (d - t0 - m.mx);
+    const spark = `<svg class="st-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight over the last 4 weeks">
+      <line x1="${X(0)}" x2="${X(27)}" y1="${Y(ty(0))}" y2="${Y(ty(27))}" class="st-trend"/>
+      ${xs.map((d, i) => `<circle cx="${X(d)}" cy="${Y(ys[i])}" r="4" class="st-dot"><title>${dfmt(m.ws[i].date, DF_DAYMON)}: ${fmt(ys[i], 1)} kg</title></circle>`).join('')}</svg>`;
+    return `<div class="card st-card">
+      <h3 class="section-title" style="margin:0 0 6px">Your maintenance calories</h3>
+      <p class="st-big"><strong>≈ ${nfmt(Math.round(m.tdee / 10) * 10, 'kcal')}</strong> kcal per day</p>
+      <p class="prose" style="margin:0 0 10px">Over the last 4 weeks you ate <b>${nfmt(m.intake, 'kcal')} kcal</b> a day on average and your weight went <b>${perWeek >= 0 ? '+' : '−'}${fmt(Math.abs(perWeek), 2)} kg per week</b>.</p>
+      ${spark}
+      <div class="st-suggest">
+        <span>For your ${bulk ? 'bulk (+0.25 % of your weight per week)' : 'cut (−0.5 % of your weight per week)'}</span>
+        <strong>${nfmt(target, 'kcal')} kcal per day</strong>
+        <button type="button" class="button" data-f="use-kcal" data-k="${target}">Use as my daily goal (now ${nfmt(F().goals.kcal, 'kcal')})</button>
+      </div>
+      <p class="hint" style="margin:10px 0 0">Based on ${m.days} logged days and ${m.weighIns} weigh-ins. Days you didn’t log are assumed to be similar. Water weight makes this jump around at first; it gets more accurate the longer you log.</p>
+    </div>`;
   }
 
   /* ---------------- Sheet: day summary ---------------- */
@@ -671,12 +827,13 @@ window.GainlyFood = function (core) {
     }
     return false;
   }
-  function openProduct(p, { code = '', afterSave = null } = {}) {
+  function openProduct(p, { code = '', afterSave = null, copyOf = null } = {}) {
     fp = p ? { ...p, n: { ...p.n } } : { id: 'own:' + uid(), name: fa.q || '', brand: '', code, img: '', serving: null, n: {}, src: 'own' };
     fp.share = !fp.offShared && !!offAccount() && validCode(fp.code);
     fp.afterSave = afterSave;
-    $('#foodProductTitle').textContent = p ? 'Edit food' : 'New food';
+    $('#foodProductTitle').textContent = copyOf ? 'Your own copy' : p ? 'Edit food' : 'New food';
     $('#foodProductBody').innerHTML = `
+      ${copyOf ? '<p class="hint" style="margin:0 0 12px">Values from NEVO (RIVM) can’t be changed, so this saves your own copy under My foods. The original stays as it is.</p>' : ''}
       <label class="field"><span class="field__label">Name</span><input data-fin="p-name" value="${esc(fp.name)}" placeholder="E.g. Chicken breast" autocomplete="off"></label>
       <div class="field-grid">
         <label class="field"><span class="field__label">Brand <small>optional</small></span><input data-fin="p-brand" value="${esc(fp.brand || '')}" autocomplete="off"></label>
@@ -688,7 +845,7 @@ window.GainlyFood = function (core) {
       </div>
       ${fp.src === 'own' ? `<label class="field"><span class="field__label">Barcode <small>optional, the number under the bars</small></span><input data-fin="p-code" inputmode="numeric" value="${esc(fp.code || '')}" placeholder="—" autocomplete="off"></label>
       ${fp.offShared ? '<p class="hint">✓ Shared on Open Food Facts.</p>' : `<label class="check-row"><input type="checkbox" data-fin="p-share"${fp.share ? ' checked' : ''}><span><b>Share on Open Food Facts</b><small>${offAccount() ? 'Adds this food to the open database for everyone, if the barcode isn’t there yet.' : 'Add your Open Food Facts account under Nutrition › Goals to use this.'}</small></span></label>`}` : (fp.code ? `<p class="hint">Barcode ${esc(fp.code)}</p>` : '')}
-      ${p && p.src === 'own' ? '<button type="button" class="button button--danger" data-f="del-product" style="margin-top:6px">Delete this food</button>' : ''}`;
+      ${p && p.src === 'own' && !copyOf ? '<button type="button" class="button button--danger" data-f="del-product" style="margin-top:6px">Delete this food</button>' : ''}`;
     productSheet.showModal();
   }
   function saveProduct() {
@@ -934,6 +1091,21 @@ window.GainlyFood = function (core) {
       case 'toggle-meal': { const k = b.dataset.meal; if (fui.open.has(k)) fui.open.delete(k); else fui.open.add(k); return core.render(); }
       case 'add-food': return openAdd(b.dataset.meal);
       case 'summary': return openSummary();
+      case 'stats': return openStats();
+      case 'stats-mode': st.mode = b.dataset.m; return renderStats();
+      case 'stats-step': {
+        const a = st.anchor || todayISO();
+        if (st.mode === 'week') st.anchor = addDays(a, 7 * +b.dataset.s);
+        else { const dt = new Date(+a.slice(0, 4), +a.slice(5, 7) - 1 + +b.dataset.s, 1); st.anchor = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-01`; }
+        if (st.anchor > todayISO()) st.anchor = todayISO();
+        return renderStats();
+      }
+      case 'stats-day': { const d = b.dataset.d; if (d > todayISO()) return; fui.day = d; statsSheet.close(); return core.render(); }
+      case 'use-kcal': {
+        const k = +b.dataset.k;
+        if (!await core.ask(`Set your daily calorie goal to ${nfmt(k, 'kcal')} kcal?${F().goals.mode === 'g' ? ' Your macros are set in grams, so check them under Goals.' : ''}`, 'Set goal')) return;
+        F().goals.kcal = k; saveNow(); toast('Daily goal updated'); renderStats(); return core.render();
+      }
       case 'water-add': case 'water-set': {
         const d = dayOf(curDay()), step = F().goals.waterStep;
         d.water = b.dataset.f === 'water-add' ? d.water + step : Math.max(0, +b.dataset.n * step);
@@ -991,7 +1163,13 @@ window.GainlyFood = function (core) {
         for (const [k] of MEALS) d.meals[k] = d.meals[k].filter((e) => e.id !== fam.entryId);
         saveNow(); amountSheet.close(); toast('Removed'); return core.render();
       }
-      case 'edit-product': return openProduct(pendingProduct());
+      case 'edit-product': {
+        const p = pendingProduct();
+        if (p.src !== 'nevo') return openProduct(p);
+        // NEVO values may not be changed: edit your own copy instead
+        const copy = { ...p, n: { ...p.n }, id: 'own:' + uid(), src: 'own', brand: '', basedOn: p.id };
+        return openProduct(copy, { copyOf: p, afterSave: (np) => { fam.pid = np.id; renderAmount(); } });
+      }
       case 'save-product': return saveProduct();
       case 'del-product': {
         const used = Object.values(F().days).some((d) => dayEntries(d).some((e) => e.pid === fp.id));
@@ -1075,7 +1253,7 @@ window.GainlyFood = function (core) {
   });
 
   // Close via backdrop or [data-close]; header buttons
-  for (const dlg of [summarySheet, addSheet, amountSheet, productSheet, scanSheet, mealSheet]) {
+  for (const dlg of [summarySheet, addSheet, amountSheet, productSheet, scanSheet, mealSheet, statsSheet]) {
     dlg.addEventListener('click', (ev) => { if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close(); });
   }
   $('#foodProductSave').dataset.f = 'save-product';
