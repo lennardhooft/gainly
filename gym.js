@@ -411,6 +411,29 @@ window.GainlyGym = function (core) {
   }
   function stopRest() { const a = G().active; if (a) { a.restEnd = null; saveSoon(); } tick(); }
 
+  /* ---------------- Keep the screen on during a workout ---------------- */
+  // Screen Wake Lock: the iPhone doesn't go to sleep while a workout runs, so the rest timer stays visible.
+  // The lock is dropped automatically when the app goes to the background and re-taken when it comes back.
+  let wakeLock = null, wakePending = false, wakeRetry = 0;
+  async function syncWakeLock() {
+    const want = !!G().active && document.visibilityState === 'visible';
+    if (!('wakeLock' in navigator)) return;
+    if (want && !wakeLock && !wakePending && Date.now() >= wakeRetry) {
+      wakePending = true;
+      try {
+        // Never wait forever: some browsers leave the request hanging while the page is in the background.
+        const lock = await Promise.race([navigator.wakeLock.request('screen'), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))]);
+        lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+        if (G().active && document.visibilityState === 'visible') wakeLock = lock; else lock.release().catch(() => {});
+      } catch { wakeRetry = Date.now() + 15000; /* not allowed right now (e.g. low power mode): try again later */ }
+      wakePending = false;
+    } else if (!want && wakeLock) {
+      try { await wakeLock.release(); } catch { /* ok */ }
+      wakeLock = null;
+    }
+  }
+  document.addEventListener('visibilitychange', syncWakeLock);
+
   /* ---------------- Clock (duration, rest timer, "workout running") ---------------- */
   const restBar = $('#restBar');
   const pill = $('#workoutPill');
@@ -434,6 +457,7 @@ window.GainlyGym = function (core) {
       }
     } else restBar.hidden = true;
     document.body.classList.toggle('has-rest', !restBar.hidden);
+    if (!!a !== !!wakeLock && !wakePending) syncWakeLock();
   }
   setInterval(tick, 250);
 
