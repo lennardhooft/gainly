@@ -126,6 +126,7 @@ window.GainlyGym = function (core) {
     L('wrist-ext', 'Seated Wrist Extension (Barbell)', 'Arms', 'Seated_Palms-Down_Barbell_Wrist_Curl'),
     L('wristcurl-db', 'Seated Palms Up Wrist Curl', 'Arms', 'Seated_Dumbbell_Palms-Up_Wrist_Curl'),
     L('wristcurl-behind', 'Behind the Back Bicep Wrist Curl (Barbell)', 'Arms', 'Standing_Palms-Up_Barbell_Behind_The_Back_Wrist_Curl'),
+    L('wristcurl-behind2', 'Behind the Back Wrist Curl (Barbell)', 'Arms', 'Standing_Palms-Up_Barbell_Behind_The_Back_Wrist_Curl'),
     L('wrist-roller', 'Wrist Roller', 'Arms', 'Wrist_Roller'),
     L('squat-bb', 'Squat (Barbell)', 'Legs', 'Barbell_Squat'),
     L('squat-smith', 'Squat (Smith Machine)', 'Legs', 'Smith_Machine_Squat'),
@@ -501,9 +502,13 @@ window.GainlyGym = function (core) {
       }).join('') : '<div class="card"><p class="prose">Create a routine for your regular workouts, like Push, Pull and Legs. Then you start them with one tap, with your previous weights alongside.</p></div>'}
       <div class="card">
         <h2 class="card__title" style="margin-bottom:6px">Coming from Hevy?</h2>
-        <p class="prose" style="margin-bottom:12px">Export your workouts from Hevy as a CSV file (in its settings, under export) and import it here. Duplicate workouts are skipped.</p>
-        <button type="button" class="button" data-g="hevy">Import Hevy CSV</button>
+        <p class="prose" style="margin-bottom:12px">Import your workouts (CSV export from Hevy) and your routines (JSON from the Hevy API, Pro). Duplicates are skipped or updated.</p>
+        <div class="button-row">
+          <button type="button" class="button" data-g="hevy">Workouts (CSV)</button>
+          <button type="button" class="button" data-g="hevy-routines">Routines (JSON)</button>
+        </div>
         <input type="file" id="hevyFile" accept=".csv,text/csv" hidden>
+        <input type="file" id="hevyRoutineFile" accept=".json,application/json" multiple hidden>
       </div>`;
   }
 
@@ -831,6 +836,55 @@ window.GainlyGym = function (core) {
     const t = Date.parse(s);
     return Number.isNaN(t) ? null : t;
   }
+  // Routines from the Hevy API (GET /v1/routines): one or more JSON files, e.g. page 1 and page 2.
+  async function importHevyRoutines(files) {
+    try {
+      await dbReady;
+      const list = [];
+      for (const f of files) {
+        const data = JSON.parse(await f.text());
+        const rs = Array.isArray(data) ? data : data.routines || (data.routine ? [data.routine] : []);
+        list.push(...rs);
+      }
+      if (!list.length) throw new Error('empty');
+      const g = G();
+      const byName = new Map();
+      for (const e of [...DBEX].reverse()) byName.set(norm(e.name), e.id);
+      for (const e of [...LIB, ...g.custom]) byName.set(norm(e.name), e.id);
+      const created = [];
+      const TYPE = { warmup: 'w', dropset: 'd', failure: 'f' };
+      const routines = list.filter((r) => r && r.title && Array.isArray(r.exercises)).map((r) => ({
+        id: 'hevy-' + (r.id || norm(r.title)),
+        name: r.title.trim(),
+        items: [...r.exercises].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)).map((e) => {
+          const title = String(e.title || '').trim();
+          let exId = byName.get(norm(title));
+          if (!exId) {
+            const sets = e.sets || [];
+            const type = sets.some((s) => s.weight_kg) ? 'kg' : sets.some((s) => s.duration_seconds) ? 'time' : 'bw';
+            const c = { id: 'c-' + uid(), name: title || 'Exercise', group: guessGroup(title), type };
+            g.custom.push(c); created.push(c); exId = c.id; byName.set(norm(title), exId);
+          }
+          const sets = (e.sets || []).slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+          return { exId, n: Math.max(1, sets.length), types: sets.length ? sets.map((s) => TYPE[s.type] || '') : undefined, rest: Number.isFinite(e.rest_seconds) ? e.rest_seconds : 90 };
+        }),
+      })).filter((r) => r.items.length);
+      const existing = new Set(g.routines.map((r) => r.id));
+      const updates = routines.filter((r) => existing.has(r.id)).length;
+      const msg = `Import ${plural(routines.length, 'routine', 'routines')} from Hevy${updates ? ` (${updates} already here will be updated)` : ''}${created.length ? `, with ${plural(created.length, 'new custom exercise', 'new custom exercises')}` : ''}?`;
+      if (!await core.ask(msg, 'Import')) { g.custom = g.custom.filter((c) => !created.includes(c)); return; }
+      for (const r of routines) {
+        const i = g.routines.findIndex((x) => x.id === r.id);
+        if (i >= 0) g.routines[i] = r; else g.routines.push(r);
+      }
+      saveNow();
+      toast(`${plural(routines.length, 'routine', 'routines')} imported`);
+      core.go('gym');
+    } catch {
+      toast('This doesn’t look like a Hevy routines file (JSON)');
+    }
+  }
+
   function guessGroup(title) {
     const t = ' ' + title.toLowerCase() + ' ';
     const rules = [
@@ -929,6 +983,7 @@ window.GainlyGym = function (core) {
       case 'new-routine': return openRoutine(null);
       case 'edit-routine': return openRoutine(b.dataset.id);
       case 'hevy': return $('#hevyFile').click();
+      case 'hevy-routines': return $('#hevyRoutineFile').click();
       case 'add-ex':
         return openPicker((ids) => {
           for (const id of ids) a.items.push({ exId: id, rest: 90, sets: blankSets(prevSets(id).length || 3) });
@@ -985,7 +1040,7 @@ window.GainlyGym = function (core) {
       }
       case 'to-routine': {
         const w = g.workouts.find((x) => x.id === wkOpen); if (!w) return;
-        g.routines.push({ id: uid(), name: w.name, items: w.items.map((it) => ({ exId: it.exId, n: it.sets.length, rest: 90 })) });
+        g.routines.push({ id: uid(), name: w.name, items: w.items.map((it) => ({ exId: it.exId, n: it.sets.length, types: it.sets.map((s) => s.t || ''), rest: 90 })) });
         saveNow(); workoutSheet.close(); toast(`Routine “${w.name}” created`); core.go('gym');
         return;
       }
@@ -1031,6 +1086,7 @@ window.GainlyGym = function (core) {
       case 'r-minus': case 'r-plus': {
         const it = draft.items[+b.closest('.r-item').dataset.i];
         it.n = Math.max(1, Math.min(20, it.n + (b.dataset.g === 'r-plus' ? 1 : -1)));
+        if (it.types) { while (it.types.length < it.n) it.types.push(''); it.types.length = it.n; }
         return renderRoutine();
       }
       case 'r-up': case 'r-down': {
@@ -1074,6 +1130,7 @@ window.GainlyGym = function (core) {
     const t = ev.target;
     const a = act();
     if (t.id === 'hevyFile' && t.files[0]) { importHevy(t.files[0]); t.value = ''; return; }
+    if (t.id === 'hevyRoutineFile' && t.files.length) { importHevyRoutines([...t.files]); t.value = ''; return; }
     if (t.dataset?.gin === 't' && a) {
       const p = rowOf(t); if (!p) return;
       const it = a.items[p.i];
@@ -1118,5 +1175,6 @@ window.GainlyGym = function (core) {
     titles: { gym: 'Workout', gymHistory: 'History', gymEx: 'Exercises' },
     afterRender() { tick(); },
     importHevy,
+    importHevyRoutines,
   };
 };
