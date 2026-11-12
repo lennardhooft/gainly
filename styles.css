@@ -1059,10 +1059,32 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .wk-done h2 { font: 700 24px/1.2 var(--font-display); }
 .wk-done p { color: var(--muted); }
 
+/* Exercise images (free-exercise-db) */
+.ex-thumb {
+  flex: none; width: 44px; height: 44px; border-radius: 10px; overflow: hidden;
+  background: #fff; display: grid; place-items: center;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.ex-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ex-thumb span { font-weight: 700; color: var(--muted); background: var(--surface-2); width: 100%; height: 100%; display: grid; place-items: center; }
+.ex-card__head .ex-thumb { width: 38px; height: 38px; border-radius: 9px; }
+.pick .ex-thumb { width: 40px; height: 40px; }
+.ex-visual { position: relative; aspect-ratio: 4 / 3; border-radius: var(--radius-sm); overflow: hidden; background: #fff; margin-bottom: 14px; }
+.ex-visual img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ex-visual__end { animation: ex-flip 2.4s steps(1) infinite; }
+@keyframes ex-flip { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
+.ex-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.ex-facts div { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
+.ex-facts span { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+.ex-howto { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.ex-howto summary { font-weight: 600; cursor: pointer; }
+.ex-howto ol { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+
 /* Schema-editor */
 .r-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; padding: 12px 14px; align-items: center; }
 .r-item + .r-item { border-top: 1px solid var(--border); }
-.r-item__main { min-width: 0; }
+.r-item__main { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.r-item__main > div { min-width: 0; }
 .r-item__tools { grid-column: 1 / -1; display: flex; gap: 6px; justify-content: flex-end; margin-top: -2px; }
 .r-item__tools button, .stepper button { border: 0; background: var(--surface-2); border-radius: 8px; min-width: 34px; height: 32px; font-weight: 700; font-size: 16px; }
 .r-item__tools button:disabled { opacity: 0.35; }

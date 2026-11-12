@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="nl">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Gainly</title>
-  <meta name="description" content="Volg je gewicht en lichaamsmaten.">
+  <meta name="description" content="Track your weight, body measurements and workouts.">
   <meta name="theme-color" content="#141312">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,8 +29,8 @@
     <img class="splash__logo" src="icons/logo.webp" alt="" width="2000" height="414">
   </div>
   <header class="topbar">
-    <h1 class="topbar__title" id="viewTitle">Overzicht</h1>
-    <button type="button" class="topbar__pill" id="workoutPill" data-tab-go="gym" hidden><i aria-hidden="true"></i>Training · <span>0:00</span></button>
+    <h1 class="topbar__title" id="viewTitle">Overview</h1>
+    <button type="button" class="topbar__pill" id="workoutPill" data-tab-go="gym" hidden><i aria-hidden="true"></i>Workout · <span>0:00</span></button>
   </header>
 
   <main class="views" id="views">
@@ -45,42 +45,42 @@
     <section class="view" data-view="settings" hidden></section>
   </main>
 
-  <button class="fab" id="fab" type="button" aria-label="Nieuwe meting">
+  <button class="fab" id="fab" type="button" aria-label="New measurement">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
   </button>
 
   <!-- Tweede balk voor Lichaam, gestapeld boven het hoofdmenu -->
-  <nav class="subnav" data-group="body" aria-label="Lichaam" style="--n:4">
-    <button type="button" class="subtab" data-tab="overview">Overzicht</button>
-    <button type="button" class="subtab" data-tab="compare">Vergelijk</button>
-    <button type="button" class="subtab" data-tab="photos">Foto's</button>
-    <button type="button" class="subtab" data-tab="log">Metingen</button>
+  <nav class="subnav" data-group="body" aria-label="Body" style="--n:4">
+    <button type="button" class="subtab" data-tab="overview">Overview</button>
+    <button type="button" class="subtab" data-tab="compare">Compare</button>
+    <button type="button" class="subtab" data-tab="photos">Photos</button>
+    <button type="button" class="subtab" data-tab="log">Log</button>
   </nav>
 
   <nav class="subnav" data-group="gym" aria-label="Gym" style="--n:3">
-    <button type="button" class="subtab" data-tab="gym">Training</button>
-    <button type="button" class="subtab" data-tab="gymHistory">Historiek</button>
-    <button type="button" class="subtab" data-tab="gymEx">Oefeningen</button>
+    <button type="button" class="subtab" data-tab="gym">Workout</button>
+    <button type="button" class="subtab" data-tab="gymHistory">History</button>
+    <button type="button" class="subtab" data-tab="gymEx">Exercises</button>
   </nav>
 
   <!-- Rusttimer -->
   <div class="rest" id="restBar" role="timer" aria-live="off" hidden>
     <span class="rest__fill" aria-hidden="true"></span>
-    <span class="rest__label">Rust</span>
+    <span class="rest__label">Rest</span>
     <strong class="rest__time">1:30</strong>
-    <button type="button" data-g="rest-minus" aria-label="15 seconden minder">−15</button>
-    <button type="button" data-g="rest-plus" aria-label="15 seconden meer">+15</button>
-    <button type="button" data-g="rest-skip">Sla over</button>
+    <button type="button" data-g="rest-minus" aria-label="15 seconds less">−15</button>
+    <button type="button" data-g="rest-plus" aria-label="15 seconds more">+15</button>
+    <button type="button" data-g="rest-skip">Skip</button>
   </div>
 
-  <nav class="tabbar" aria-label="Hoofdmenu">
+  <nav class="tabbar" aria-label="Main menu">
     <button type="button" class="tab" id="bodyTab">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.5" r="2.5"/><path d="M5 8.5c4 1.2 10 1.2 14 0M12 9.5V14M12 14l-3.5 7M12 14l3.5 7"/></svg>
-      <span>Lichaam</span>
+      <span>Body</span>
     </button>
     <button type="button" class="tab" data-tab="food">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 11v10M17 21V3c-2.2 0-4 2.5-4 6v5h4"/></svg>
-      <span>Voeding</span>
+      <span>Nutrition</span>
     </button>
     <button type="button" class="tab" id="gymTab">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>
@@ -88,7 +88,7 @@
     </button>
     <button type="button" class="tab" data-tab="settings">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-      <span>Instellingen</span>
+      <span>Settings</span>
     </button>
   </nav>
 
@@ -96,22 +96,22 @@
   <dialog class="sheet" id="measureSheet" aria-labelledby="measureTitle">
     <form class="sheet__form" id="measureForm" novalidate>
       <header class="sheet__head">
-        <button type="button" class="link" data-close>Annuleer</button>
-        <h2 id="measureTitle">Nieuwe meting</h2>
-        <button type="submit" class="link link--strong">Bewaar</button>
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="measureTitle">New measurement</h2>
+        <button type="submit" class="link link--strong">Save</button>
       </header>
       <div class="sheet__body">
         <label class="field">
-          <span class="field__label">Datum</span>
+          <span class="field__label">Date</span>
           <input type="date" name="date" required>
         </label>
         <div id="measureFields"></div>
         <label class="field field--note">
-          <span class="field__label">Notitie</span>
-          <textarea name="note" rows="2" placeholder="Bijv. 's ochtends, nuchter"></textarea>
+          <span class="field__label">Note</span>
+          <textarea name="note" rows="2" placeholder="E.g. morning, before eating"></textarea>
         </label>
-        <p class="hint measure-hint">Vul alleen in wat je gemeten hebt. Grijze waarden zijn je vorige meting.</p>
-        <button type="button" class="button button--danger" id="measureDelete" hidden>Meting verwijderen</button>
+        <p class="hint measure-hint">Only fill in what you measured. Grey values are your previous measurement.</p>
+        <button type="button" class="button button--danger" id="measureDelete" hidden>Delete measurement</button>
       </div>
     </form>
   </dialog>
@@ -120,17 +120,17 @@
   <dialog class="sheet" id="photoSheet" aria-labelledby="photoTitle">
     <form class="sheet__form" id="photoForm" novalidate>
       <header class="sheet__head">
-        <button type="button" class="link" data-close>Annuleer</button>
-        <h2 id="photoTitle">Foto's</h2>
-        <button type="submit" class="link link--strong">Bewaar</button>
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="photoTitle">Photos</h2>
+        <button type="submit" class="link link--strong">Save</button>
       </header>
       <div class="sheet__body">
         <label class="field">
-          <span class="field__label">Datum</span>
+          <span class="field__label">Date</span>
           <input type="date" name="date" required>
         </label>
         <div class="pose-slots" id="poseSlots"></div>
-        <p class="hint">Tip: zelfde plek, zelfde licht, zelfde afstand en houding. Gebruik de zelfontspanner of laat iemand helpen. Foto's blijven alleen op dit toestel.</p>
+        <p class="hint">Tip: same spot, same light, same distance and pose. Use the self-timer or ask someone to help. Photos stay on this device only.</p>
       </div>
     </form>
   </dialog>
@@ -142,8 +142,8 @@
       <figcaption id="viewerCap"></figcaption>
     </figure>
     <div class="viewer__actions">
-      <button type="button" class="button button--danger" id="viewerDelete">Verwijder</button>
-      <button type="button" class="button" data-close>Sluit</button>
+      <button type="button" class="button button--danger" id="viewerDelete">Delete</button>
+      <button type="button" class="button" data-close>Close</button>
     </div>
   </dialog>
 
@@ -152,11 +152,11 @@
     <div class="celebrate__confetti" id="confetti" aria-hidden="true"></div>
     <div class="celebrate__card">
       <div class="celebrate__icon" id="celebrateIcon" aria-hidden="true"></div>
-      <p class="eyebrow">Mijlpaal bereikt</p>
+      <p class="eyebrow">Milestone reached</p>
       <h2 id="celebrateTitle"></h2>
       <p class="celebrate__text" id="celebrateText"></p>
       <p class="celebrate__more" id="celebrateMore"></p>
-      <button type="button" class="button button--primary" data-close>Top!</button>
+      <button type="button" class="button button--primary" data-close>Nice!</button>
     </div>
   </dialog>
 
@@ -164,9 +164,9 @@
   <dialog class="sheet sheet--tall" id="exPicker" aria-labelledby="pickTitle">
     <div class="sheet__form">
       <header class="sheet__head">
-        <button type="button" class="link" data-close>Annuleer</button>
-        <h2 id="pickTitle">Oefening kiezen</h2>
-        <button type="button" class="link link--strong" id="pickDone">Voeg toe</button>
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="pickTitle">Add exercises</h2>
+        <button type="button" class="link link--strong" id="pickDone">Add</button>
       </header>
       <div class="sheet__body" id="pickBody"></div>
     </div>
@@ -176,9 +176,9 @@
   <dialog class="sheet" id="routineSheet" aria-labelledby="routineTitle">
     <div class="sheet__form">
       <header class="sheet__head">
-        <button type="button" class="link" data-close>Annuleer</button>
-        <h2 id="routineTitle">Nieuw schema</h2>
-        <button type="button" class="link link--strong" id="routineSave">Bewaar</button>
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="routineTitle">New routine</h2>
+        <button type="button" class="link link--strong" id="routineSave">Save</button>
       </header>
       <div class="sheet__body" id="routineBody"></div>
     </div>
@@ -189,8 +189,8 @@
     <div class="sheet__form">
       <header class="sheet__head">
         <span></span>
-        <h2 id="workoutTitle">Training</h2>
-        <button type="button" class="link link--strong" data-close>Sluit</button>
+        <h2 id="workoutTitle">Workout</h2>
+        <button type="button" class="link link--strong" data-close>Close</button>
       </header>
       <div class="sheet__body" id="workoutBody"></div>
     </div>
@@ -201,18 +201,18 @@
     <div class="sheet__form">
       <header class="sheet__head">
         <span></span>
-        <h2 id="exSheetTitle">Oefening</h2>
-        <button type="button" class="link link--strong" data-close>Sluit</button>
+        <h2 id="exSheetTitle">Exercise</h2>
+        <button type="button" class="link link--strong" data-close>Close</button>
       </header>
       <div class="sheet__body" id="exSheetBody"></div>
     </div>
   </dialog>
 
   <div class="update" id="updateBanner" role="status" hidden>
-    <p><strong>Nieuwe versie beschikbaar.</strong> Je metingen blijven bewaard; er wordt eerst een herstelpunt gemaakt.</p>
+    <p><strong>New version available.</strong> Your data stays safe; a restore point is made first.</p>
     <div class="update__actions">
       <button type="button" class="link" id="updateLater">Later</button>
-      <button type="button" class="button button--primary" id="updateNow">Bijwerken</button>
+      <button type="button" class="button button--primary" id="updateNow">Update</button>
     </div>
   </div>
 

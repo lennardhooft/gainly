@@ -1,8 +1,8 @@
 {
   "name": "Gainly",
   "short_name": "Gainly",
-  "description": "Volg je gewicht en lichaamsmaten.",
-  "lang": "nl",
+  "description": "Track your weight, body measurements and workouts.",
+  "lang": "en",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

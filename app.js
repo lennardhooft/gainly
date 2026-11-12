@@ -13,21 +13,21 @@
 
   // dir: -1 = lager is beter, 1 = hoger is beter, 0 = neutraal
   const METRICS = [
-    { key: 'weight',    label: 'Gewicht',        unit: 'kg', dir: -1, group: 'Lichaam' },
-    { key: 'neck',      label: 'Nek',            unit: 'cm', dir: 0,  group: 'Omtrek' },
-    { key: 'shoulders', label: 'Schouders',      unit: 'cm', dir: 1,  group: 'Omtrek' },
-    { key: 'chest',     label: 'Borst',          unit: 'cm', dir: 0,  group: 'Omtrek' },
-    { key: 'waist',     label: 'Taille',         unit: 'cm', dir: -1, group: 'Omtrek' },
-    { key: 'belly',     label: 'Buik (navel)',   unit: 'cm', dir: -1, group: 'Omtrek' },
-    { key: 'hips',      label: 'Heupen',         unit: 'cm', dir: -1, group: 'Omtrek' },
-    { key: 'armL',      label: 'Bovenarm L',     unit: 'cm', dir: 1,  group: 'Armen & benen' },
-    { key: 'armR',      label: 'Bovenarm R',     unit: 'cm', dir: 1,  group: 'Armen & benen' },
-    { key: 'forearmL',  label: 'Onderarm L',     unit: 'cm', dir: 1,  group: 'Armen & benen' },
-    { key: 'forearmR',  label: 'Onderarm R',     unit: 'cm', dir: 1,  group: 'Armen & benen' },
-    { key: 'thighL',    label: 'Dij L',          unit: 'cm', dir: 0,  group: 'Armen & benen' },
-    { key: 'thighR',    label: 'Dij R',          unit: 'cm', dir: 0,  group: 'Armen & benen' },
-    { key: 'calfL',     label: 'Kuit L',         unit: 'cm', dir: 0,  group: 'Armen & benen' },
-    { key: 'calfR',     label: 'Kuit R',         unit: 'cm', dir: 0,  group: 'Armen & benen' },
+    { key: 'weight',    label: 'Weight',         unit: 'kg', dir: -1, group: 'Body' },
+    { key: 'neck',      label: 'Neck',           unit: 'cm', dir: 0,  group: 'Circumference' },
+    { key: 'shoulders', label: 'Shoulders',      unit: 'cm', dir: 1,  group: 'Circumference' },
+    { key: 'chest',     label: 'Chest',          unit: 'cm', dir: 0,  group: 'Circumference' },
+    { key: 'waist',     label: 'Waist',          unit: 'cm', dir: -1, group: 'Circumference' },
+    { key: 'belly',     label: 'Belly (navel)',  unit: 'cm', dir: -1, group: 'Circumference' },
+    { key: 'hips',      label: 'Hips',           unit: 'cm', dir: -1, group: 'Circumference' },
+    { key: 'armL',      label: 'Upper arm L',     unit: 'cm', dir: 1,  group: 'Arms & legs' },
+    { key: 'armR',      label: 'Upper arm R',     unit: 'cm', dir: 1,  group: 'Arms & legs' },
+    { key: 'forearmL',  label: 'Forearm L',       unit: 'cm', dir: 1,  group: 'Arms & legs' },
+    { key: 'forearmR',  label: 'Forearm R',       unit: 'cm', dir: 1,  group: 'Arms & legs' },
+    { key: 'thighL',    label: 'Thigh L',        unit: 'cm', dir: 0,  group: 'Arms & legs' },
+    { key: 'thighR',    label: 'Thigh R',        unit: 'cm', dir: 0,  group: 'Arms & legs' },
+    { key: 'calfL',     label: 'Calf L',         unit: 'cm', dir: 0,  group: 'Arms & legs' },
+    { key: 'calfR',     label: 'Calf R',         unit: 'cm', dir: 0,  group: 'Arms & legs' },
   ];
   const M = Object.fromEntries(METRICS.map((m) => [m.key, m]));
   const TAPE = METRICS.filter((m) => m.unit === 'cm');
@@ -36,11 +36,11 @@
     { key: '1m', label: '1M', days: 31 },
     { key: '3m', label: '3M', days: 92 },
     { key: '6m', label: '6M', days: 183 },
-    { key: '1y', label: '1J', days: 366 },
-    { key: 'all', label: 'Alles', days: Infinity },
+    { key: '1y', label: '1Y', days: 366 },
+    { key: 'all', label: 'All', days: Infinity },
   ];
 
-  const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', photos: "Foto's", food: 'Voeding', gym: 'Gym', settings: 'Instellingen' };
+  const TITLES = { overview: 'Overview', log: 'Measurements', compare: 'Compare', photos: 'Photos', food: 'Nutrition', gym: 'Gym', settings: 'Settings' };
   // Categorieën in het menu: Lichaam heeft een tweede balk met zijn vier pagina's.
   const BODY_VIEWS = ['overview', 'compare', 'photos', 'log'];
   const GYM_VIEWS = ['gym', 'gymHistory', 'gymEx'];
@@ -48,33 +48,33 @@
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).
   const TIPS = {
-    weight: "Weeg je 's ochtends na het toilet, nuchter en in ondergoed, altijd op dezelfde weegschaal op een harde vloer. Schommelingen van een kilo per dag zijn normaal: kijk naar de trend.",
-    neck: 'Net onder de adamsappel, het lint aan de voorkant iets schuin naar beneden. Recht vooruit kijken, schouders ontspannen.',
-    shoulders: 'Rond het breedste punt van je schouders, over de bovenarmen. Armen ontspannen langs je lichaam. Lukt het best met iemand die helpt.',
-    chest: 'Over de tepels en onder de oksels door, lint horizontaal. Meet na een normale uitademing.',
-    waist: 'Halverwege je onderste rib en de bovenkant van je heupbeen, meestal het smalste punt. Na een normale uitademing, buik niet intrekken.',
-    belly: 'Precies over je navel, lint horizontaal. Ontspannen staan, na een normale uitademing.',
-    hips: 'Rond het breedste punt van je billen, voeten tegen elkaar. Kijk in de spiegel of het lint overal horizontaal zit.',
-    arm: 'Op het dikste punt van je bovenarm, arm ontspannen naast je lichaam (niet aanspannen). Meet elke keer op dezelfde plek.',
-    forearm: 'Op het dikste punt net onder de elleboog, hand open en ontspannen.',
-    thigh: 'Ongeveer 15 cm boven de knieschijf (of net onder de bil), gewicht op beide benen. Kies één plek en blijf die gebruiken.',
-    calf: 'Op het dikste punt van je kuit, staand met je gewicht op beide benen.',
+    weight: 'Weigh yourself in the morning after the toilet, before eating and in underwear, always on the same scale on a hard floor. Swings of a kilo a day are normal: watch the trend.',
+    neck: 'Just below the Adam’s apple, with the tape sloping slightly down at the front. Look straight ahead, shoulders relaxed.',
+    shoulders: 'Around the widest point of your shoulders, over the upper arms. Arms relaxed at your sides. Easiest with someone helping.',
+    chest: 'Across the nipples and under the armpits, tape level. Measure after a normal breath out.',
+    waist: 'Halfway between your lowest rib and the top of your hip bone, usually the narrowest point. After a normal breath out, don’t suck in.',
+    belly: 'Right over your navel, tape level. Stand relaxed, after a normal breath out.',
+    hips: 'Around the widest point of your glutes, feet together. Check in the mirror that the tape is level all round.',
+    arm: 'At the thickest point of your upper arm, arm relaxed at your side (not flexed). Measure at the same spot every time.',
+    forearm: 'At the thickest point just below the elbow, hand open and relaxed.',
+    thigh: 'About 15 cm above the kneecap (or just below the glute), weight on both legs. Pick one spot and stick with it.',
+    calf: 'At the thickest point of your calf, standing with weight on both legs.',
   };
   const tipFor = (key) => TIPS[key] || TIPS[key.replace(/[LR]$/, '')];
 
   /* ---------------- Helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
   const nfCache = {};
-  const nf = (d) => (nfCache[d] ||= new Intl.NumberFormat('nl-BE', { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const nf = (d) => (nfCache[d] ||= new Intl.NumberFormat('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d }));
   const fmt = (n, d = 1) => (n == null || Number.isNaN(n) ? '—' : nf(d).format(n));
   const fmtSigned = (n, d = 1) => {
     const r = Number(n.toFixed(d));
     return (r > 0 ? '+' : r < 0 ? '−' : '±') + fmt(Math.abs(r), d);
   };
-  const DF_LONG = new Intl.DateTimeFormat('nl-BE', { day: 'numeric', month: 'short', year: 'numeric' });
-  const DF_SHORT = new Intl.DateTimeFormat('nl-BE', { day: 'numeric', month: 'short' });
-  const DF_MONTH = new Intl.DateTimeFormat('nl-BE', { month: 'short', year: '2-digit' });
-  const DF_WEEKDAY = new Intl.DateTimeFormat('nl-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const DF_LONG = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const DF_SHORT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+  const DF_MONTH = new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit' });
+  const DF_WEEKDAY = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
   const toDate = (iso) => new Date(iso + 'T12:00:00');
   const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const todayISO = () => toISO(new Date());
@@ -140,7 +140,7 @@
       // Nooit een gevulde opslag stilletjes vervangen door een lege.
       if (!allowEmpty && !state.entries.length) {
         const prev = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-        if (prev && prev.entries && prev.entries.length) { state = normalize(prev); toast('Opslaan geweigerd om gegevensverlies te voorkomen'); return; }
+        if (prev && prev.entries && prev.entries.length) { state = normalize(prev); toast('Save refused to prevent data loss'); return; }
       }
       if (!snapshots().some((x) => x.day === todayISO())) snapshot('auto');
       const json = JSON.stringify(state);
@@ -155,7 +155,7 @@
         localStorage.removeItem(SNAP_KEY);
         localStorage.setItem(STORE_KEY, json);
       }
-    } catch { toast('Opslaan mislukt: opslag vol of geblokkeerd'); }
+    } catch { toast('Saving failed: storage full or blocked'); }
   }
 
   const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null, photoPose: 'front', photoMode: 'slider', photoA: null, photoB: null };
@@ -183,7 +183,7 @@
     const after = all.filter((p) => p.date > d);
     return base ? [base, ...after] : after;
   }
-  const sinceLabel = () => (phaseStart() ? `Sinds ${fmtShort(phaseStart())}` : 'Sinds start');
+  const sinceLabel = () => (phaseStart() ? `Since ${fmtShort(phaseStart())}` : 'Since start');
   const msId = (id) => (phaseStart() ? `${phaseStart()}:${id}` : id);
 
   function lastValue(key) { const s = series(key); return s.length ? s[s.length - 1] : null; }
@@ -203,7 +203,7 @@
     if (d == null) return '<span class="delta delta--flat">—</span>';
     const t = trend(m, d);
     const arrow = t === 'flat' ? '' : `<span class="delta__arrow" aria-hidden="true">${d > 0 ? '▲' : '▼'}</span>`;
-    const sr = t === 'good' ? ' (goed)' : t === 'bad' ? ' (slechter)' : '';
+    const sr = t === 'good' ? ' (good)' : t === 'bad' ? ' (worse)' : '';
     return `<span class="delta delta--${t}">${arrow}${fmtSigned(d, digits)}${withUnit ? ' ' + m.unit : ''}<span class="sr">${sr}</span></span>`;
   }
 
@@ -224,7 +224,7 @@
   function lineChart(el, pts, opt = {}) {
     const { unit = '', digits = 1, goal = null, height = 210, label = '' } = opt;
     el.innerHTML = '';
-    if (!pts.length) { el.innerHTML = '<p class="chart__empty">Nog geen gegevens in deze periode.</p>'; return; }
+    if (!pts.length) { el.innerHTML = '<p class="chart__empty">No data in this period yet.</p>'; return; }
 
     const W = Math.max(260, Math.round(el.clientWidth || 320));
     const H = height;
@@ -244,7 +244,7 @@
     const spanDays = (x1 - x0) / 864e5;
     const xFmt = (t) => (spanDays > 200 ? DF_MONTH : DF_SHORT).format(new Date(t));
 
-    let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(label)}: ${pts.length} metingen, laatste ${fmt(vals[pts.length - 1], digits)} ${unit}">`;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(label)}: ${pts.length} measurements, latest ${fmt(vals[pts.length - 1], digits)} ${unit}">`;
     for (const t of ticks) {
       const y = Y(t).toFixed(1);
       svg += `<line class="chart__grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y}" y2="${y}"/>`;
@@ -256,7 +256,7 @@
     if (goal != null) {
       const gy = Y(goal).toFixed(1);
       svg += `<line class="chart__goal" x1="${pad.l}" x2="${W - pad.r}" y1="${gy}" y2="${gy}"/>`;
-      svg += `<text class="chart__goal-label" x="${pad.l + 6}" y="${Number(gy) - 6}">Doel ${fmt(goal, digits)}</text>`;
+      svg += `<text class="chart__goal-label" x="${pad.l + 6}" y="${Number(gy) - 6}">Goal ${fmt(goal, digits)}</text>`;
     }
 
     const coords = pts.map((p, i) => [X(ts[i]), Y(p.value)]);
@@ -316,7 +316,7 @@
   function renderOverview() {
     const el = viewEl('overview');
     if (!state.entries.length) {
-      el.innerHTML = emptyState('Begin met meten', 'Voeg je eerste meting toe: gewicht, en als je wil een paar omtrekken met een meetlint.', 'add-measure', 'Eerste meting toevoegen');
+      el.innerHTML = emptyState('Start measuring', 'Add your first measurement: weight, and if you like a few circumferences with a tape measure.', 'add-measure', 'Add first measurement');
       return;
     }
     const s = state.settings;
@@ -339,17 +339,17 @@
         const left = last.value - s.goalWeight;
         reached = Math.sign(left) !== Math.sign(total) || Math.abs(left) < 0.05;
         goal = `<div class="progress">
-          <div class="progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct * 100)}" aria-label="Voortgang naar streefgewicht"><span style="width:${pct * 100}%"></span></div>
-          <div class="progress__text"><span>${reached ? 'Doel bereikt 🎉' : `Nog ${fmt(Math.abs(left))} kg tot ${fmt(s.goalWeight)} kg`}</span><span>${Math.round(pct * 100)}%</span></div>
+          <div class="progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct * 100)}" aria-label="Progress to goal weight"><span style="width:${pct * 100}%"></span></div>
+          <div class="progress__text"><span>${reached ? 'Goal reached 🎉' : `${fmt(Math.abs(left))} kg to go to ${fmt(s.goalWeight)} kg`}</span><span>${Math.round(pct * 100)}%</span></div>
         </div>`;
       }
       hero = `<div class="card">
-        <p class="eyebrow">Gewicht · ${fmtDate(last.date)}</p>
+        <p class="eyebrow">Weight · ${fmtDate(last.date)}</p>
         <p class="hero__value">${fmt(last.value)}<small>kg</small></p>
         <div class="stats">
           <div class="stat"><span class="stat__label">${sinceLabel()}</span><span class="stat__value">${pw.length > 1 ? deltaHTML(M.weight, last.value - first.value) : '—'}</span></div>
-          <div class="stat"><span class="stat__label">7 dagen</span><span class="stat__value">${d7 != null ? deltaHTML(M.weight, d7) : '—'}</span></div>
-          <div class="stat"><span class="stat__label">30 dagen</span><span class="stat__value">${d30 != null ? deltaHTML(M.weight, d30) : '—'}</span></div>
+          <div class="stat"><span class="stat__label">7 days</span><span class="stat__value">${d7 != null ? deltaHTML(M.weight, d7) : '—'}</span></div>
+          <div class="stat"><span class="stat__label">30 days</span><span class="stat__value">${d30 != null ? deltaHTML(M.weight, d30) : '—'}</span></div>
         </div>
         ${goal}
         ${forecastHTML(last, reached)}
@@ -375,18 +375,18 @@
     el.innerHTML = `${hero}
       <div class="card">
         <div class="card__head">
-          <select class="select" id="metricSelect" aria-label="Kies een maat">
+          <select class="select" id="metricSelect" aria-label="Choose a measurement">
             ${available.map((mm) => `<option value="${mm.key}" ${mm.key === ui.metric ? 'selected' : ''}>${mm.label}</option>`).join('')}
           </select>
-          <div class="segmented" role="group" aria-label="Periode">
+          <div class="segmented" role="group" aria-label="Period">
             ${RANGES.map((r) => `<button type="button" data-range="${r.key}" aria-pressed="${r.key === ui.range}">${r.label}</button>`).join('')}
           </div>
         </div>
         <div class="chart" id="mainChart"></div>
       </div>
-      <h2 class="section-title">Alle maten · ${sinceLabel().toLowerCase()}</h2>
+      <h2 class="section-title">All measurements · ${sinceLabel().toLowerCase()}</h2>
       <div class="metric-grid">${cards}</div>
-      <p class="hint" style="text-align:center">Houd + ingedrukt om snel alleen je gewicht in te geven.</p>`;
+      <p class="hint" style="text-align:center">Press and hold + to quickly log just your weight.</p>`;
 
     const range = RANGES.find((r) => r.key === ui.range) || RANGES[RANGES.length - 1];
     const from = range.days === Infinity ? '0000-00-00' : addDays(todayISO(), -range.days);
@@ -422,17 +422,17 @@
     const g = state.settings.goalWeight;
     const pw = `${deltaHTML(M.weight, f.perWeek, 2)} per week`;
     let txt;
-    if (Math.abs(f.perWeek) < 0.05) txt = `Je gewicht is stabiel de laatste ${plural(f.weeks, 'week', 'weken')}.`;
+    if (Math.abs(f.perWeek) < 0.05) txt = `Your weight has been stable for the last ${plural(f.weeks, 'week', 'weeks')}.`;
     else if (g && !reached) {
       const need = g - last.value;
       if (Math.sign(need) === Math.sign(f.slope)) {
         const days = Math.round(need / f.slope);
         txt = days > 3 * 365
-          ? `Aan je tempo van ${pw} duurt het nog meer dan drie jaar tot ${fmt(g)} kg.`
-          : `Aan je tempo van ${pw} bereik je ${fmt(g)} kg rond <strong>${fmtDate(addDays(last.date, days))}</strong>.`;
-      } else txt = `Je tempo is ${pw}, weg van je doel van ${fmt(g)} kg.`;
-    } else if (!g) txt = `Je tempo: ${pw}. <button type="button" class="inline-link" data-tab-go="settings">Stel een streefgewicht in</button> om te zien wanneer je het haalt.`;
-    else txt = `Je tempo: ${pw}.`;
+          ? `At your pace of ${pw} it will take more than three years to reach ${fmt(g)} kg.`
+          : `At your pace of ${pw} you’ll reach ${fmt(g)} kg around <strong>${fmtDate(addDays(last.date, days))}</strong>.`;
+      } else txt = `Your pace is ${pw}, away from your goal of ${fmt(g)} kg.`;
+    } else if (!g) txt = `Your pace: ${pw}. <button type="button" class="inline-link" data-tab-go="settings">Set a goal weight</button> to see when you’ll reach it.`;
+    else txt = `Your pace: ${pw}.`;
     return `<p class="forecast">${ICON_TREND}<span>${txt}</span></p>`;
   }
 
@@ -446,7 +446,7 @@
   function milestones() {
     const out = [];
     const w = phaseSeries('weight');
-    const since = phaseStart() ? `sinds ${fmtShort(phaseStart())}` : 'dan bij je eerste meting';
+    const since = phaseStart() ? `since ${fmtShort(phaseStart())}` : 'than at your first measurement';
     if (w.length > 1) {
       const start = w[0].value;
       const bulk = isBulk();
@@ -456,13 +456,13 @@
         if (hit.has(k) || moved < k - 1e-9) continue;
         hit.add(k);
         out.push(bulk
-          ? { id: msId('gkg' + k), date: p.date, icon: '💪', title: `+${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg meer ${since}.` }
-          : { id: msId('kg' + k), date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg minder ${since}.` });
+          ? { id: msId('gkg' + k), date: p.date, icon: '💪', title: `+${kgTxt(k)} kg`, text: `You weigh ${kgTxt(k)} kg more ${since}.` }
+          : { id: msId('kg' + k), date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `You weigh ${kgTxt(k)} kg less ${since}.` });
       }
       const g = state.settings.goalWeight;
       if (g && (bulk ? g > start : g < start)) {
         const p = w.find((x) => (bulk ? x.value >= g - 0.05 : x.value <= g + 0.05));
-        if (p) out.push({ id: msId('goal' + g), date: p.date, icon: '🏆', title: 'Doel bereikt', text: `Je hebt je streefgewicht van ${fmt(g)} kg gehaald.` });
+        if (p) out.push({ id: msId('goal' + g), date: p.date, icon: '🏆', title: 'Goal reached', text: `You hit your goal weight of ${fmt(g)} kg.` });
       }
     }
     if (isBulk()) {
@@ -474,12 +474,12 @@
         for (const p of sr) for (const k of steps) {
           if (hit.has(k) || p.value - sr[0].value < k - 1e-9) continue;
           hit.add(k);
-          out.push({ id: msId(key + '+' + k), date: p.date, icon, title: `${label} +${k} cm`, text: `Je ${label.toLowerCase()} is ${k} cm groter dan bij de start.` });
+          out.push({ id: msId(key + '+' + k), date: p.date, icon, title: `${label} +${k} cm`, text: `Your ${label.toLowerCase()} is ${k} cm bigger than at the start.` });
         }
       };
-      grow('armR', [1, 2, 3, 4, 5], '💪', 'Bovenarm');
-      grow('chest', [3, 5, 10, 15], '🏋️', 'Borst');
-      grow('shoulders', [3, 5, 10, 15], '🏋️', 'Schouders');
+      grow('armR', [1, 2, 3, 4, 5], '💪', 'Upper arm');
+      grow('chest', [3, 5, 10, 15], '🏋️', 'Chest');
+      grow('shoulders', [3, 5, 10, 15], '🏋️', 'Shoulders');
     }
     const entries = entriesAsc();
     if (!isBulk()) { // taille- en omtrekmijlpalen alleen bij afvallen
@@ -489,7 +489,7 @@
         for (const p of wa) for (const k of MS_WAIST) {
           if (hit.has(k) || wa[0].value - p.value < k - 1e-9) continue;
           hit.add(k);
-          out.push({ id: msId('waist' + k), date: p.date, icon: '📏', title: `Taille −${k} cm`, text: `Je taille is ${k} cm smaller dan bij de start.` });
+          out.push({ id: msId('waist' + k), date: p.date, icon: '📏', title: `Waist −${k} cm`, text: `Your waist is ${k} cm smaller than at the start.` });
         }
       }
       const firsts = {}, cur = {}, hit = new Set();
@@ -509,12 +509,12 @@
         for (const k of MS_TAPE) {
           if (hit.has(k) || lost < k - 1e-9) continue;
           hit.add(k);
-          out.push({ id: msId('tape' + k), date: e.date, icon: '🎯', title: `−${k} cm omtrek`, text: `Al je omtrekken samen zijn ${k} cm kleiner dan bij de start.` });
+          out.push({ id: msId('tape' + k), date: e.date, icon: '🎯', title: `−${k} cm total`, text: `All your circumferences together are ${k} cm smaller than at the start.` });
         }
       }
     }
     for (const n of MS_COUNT) {
-      if (entries.length >= n) out.push({ id: 'n' + n, date: entries[n - 1].date, icon: '🗓️', title: `${n} metingen`, text: `Je hebt al ${n} keer gemeten. Volhouden loont.` });
+      if (entries.length >= n) out.push({ id: 'n' + n, date: entries[n - 1].date, icon: '🗓️', title: `${n} measurements`, text: `You’ve measured ${n} times already. Consistency pays off.` });
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -538,7 +538,7 @@
     $('#celebrateTitle').textContent = main.title;
     $('#celebrateText').textContent = main.text;
     const more = list.slice(0, -1).map((m) => m.title);
-    $('#celebrateMore').textContent = more.length ? `En ook: ${more.join(', ')}` : '';
+    $('#celebrateMore').textContent = more.length ? `And also: ${more.join(', ')}` : '';
     const box = $('#confetti');
     box.innerHTML = '';
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -554,10 +554,10 @@
   function renderLog() {
     const el = viewEl('log');
     if (!state.entries.length) {
-      el.innerHTML = emptyState('Nog geen metingen', 'Elke meting die je toevoegt, verschijnt hier. Tik erop om ze aan te passen of te verwijderen.', 'add-measure', 'Meting toevoegen');
+      el.innerHTML = emptyState('No measurements yet', 'Every measurement you add shows up here. Tap one to edit or delete it.', 'add-measure', 'Add measurement');
       return;
     }
-    el.innerHTML = `${logHTML()}<p class="hint" style="text-align:center">Tik op een meting om ze aan te passen of te verwijderen.</p>`;
+    el.innerHTML = `${logHTML()}<p class="hint" style="text-align:center">Tap a measurement to edit or delete it.</p>`;
   }
 
   function logHTML() {
@@ -565,11 +565,11 @@
     const byYear = {};
     for (const e of desc) (byYear[e.date.slice(0, 4)] ||= []).push(e);
     return Object.entries(byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, list]) => `
-      <h2 class="section-title" id="${year === desc[0].date.slice(0, 4) ? 'metingen' : ''}">Metingen ${year} · ${list.length}</h2>
+      <h2 class="section-title" id="${year === desc[0].date.slice(0, 4) ? 'metingen' : ''}">Measurements ${year} · ${list.length}</h2>
       <div class="list">${list.map((e) => {
         const n = Object.keys(e.values).filter((k) => e.values[k] != null).length;
         const wv = e.values.weight;
-        const sub = [plural(n, 'waarde', 'waarden'), e.note].filter(Boolean).map(esc).join(' · ');
+        const sub = [plural(n, 'value', 'values'), e.note].filter(Boolean).map(esc).join(' · ');
         return `<button class="list__item" data-edit-entry="${e.id}">
           <div class="list__main"><div class="list__title">${esc(DF_WEEKDAY.format(toDate(e.date)))}</div><div class="list__sub">${sub}</div></div>
           <div class="list__end">${wv != null ? fmt(wv) + ' kg' : ''}</div>${chev}
@@ -581,7 +581,7 @@
     const el = viewEl('compare');
     const dates = entriesAsc().map((e) => e.date);
     if (dates.length < 2) {
-      el.innerHTML = emptyState('Nog niets te vergelijken', 'Je hebt minstens twee metingen op verschillende datums nodig.', 'add-measure', 'Meting toevoegen');
+      el.innerHTML = emptyState('Nothing to compare yet', 'You need at least two measurements on different dates.', 'add-measure', 'Add measurement');
       return;
     }
     if (!dates.includes(ui.cmpA)) {
@@ -608,24 +608,24 @@
     el.innerHTML = `
       <div class="card">
         <div class="compare-pick">
-          <label class="field"><span class="field__label">Van</span><select class="select" id="cmpA">${opts(A)}</select></label>
+          <label class="field"><span class="field__label">From</span><select class="select" id="cmpA">${opts(A)}</select></label>
           <span class="compare-pick__arrow" aria-hidden="true">→</span>
-          <label class="field"><span class="field__label">Tot</span><select class="select" id="cmpB">${opts(B)}</select></label>
+          <label class="field"><span class="field__label">To</span><select class="select" id="cmpB">${opts(B)}</select></label>
         </div>
       </div>
       <div class="compare-head">
-        <div class="stat"><span class="stat__label">Periode</span><span class="stat__value">${plural(Math.abs(days), 'dag', 'dagen')}</span></div>
-        <div class="stat"><span class="stat__label">Gewicht</span><span class="stat__value">${wa && wb ? deltaHTML(M.weight, wb.value - wa.value) : '—'}</span></div>
+        <div class="stat"><span class="stat__label">Period</span><span class="stat__value">${plural(Math.abs(days), 'day', 'days')}</span></div>
+        <div class="stat"><span class="stat__label">Weight</span><span class="stat__value">${wa && wb ? deltaHTML(M.weight, wb.value - wa.value) : '—'}</span></div>
         <div class="stat"><span class="stat__label">Per week</span><span class="stat__value">${perWeek != null ? deltaHTML(M.weight, perWeek, 2) : '—'}</span></div>
       </div>
       ${bodyHTML(A, B)}
       <div class="card">
         <table class="table">
-          <thead><tr><th scope="col">Maat</th><th scope="col">${fmtShort(A)}</th><th scope="col">${fmtShort(B)}</th><th scope="col">Verschil</th></tr></thead>
+          <thead><tr><th scope="col">Measurement</th><th scope="col">${fmtShort(A)}</th><th scope="col">${fmtShort(B)}</th><th scope="col">Change</th></tr></thead>
           <tbody>${rows.join('')}</tbody>
         </table>
       </div>
-      <p class="hint">Een kleine datum onder een waarde betekent dat die maat op die dag niet gemeten is; dan staat de meest recente meting ervoor.</p>`;
+      <p class="hint">A small date under a value means that measurement wasn’t taken that day; the most recent earlier one is shown instead.</p>`;
   }
 
   /* ---------------- Lichaamsschets ---------------- */
@@ -688,19 +688,19 @@
       }
     }
     return `<div class="card">
-      <h2 class="card__title">Per meetplek</h2>
-      <p class="hint" style="margin:4px 0 6px">Groen is de goede richting, rood de andere. Links en rechts zoals in de spiegel.</p>
-      <svg class="body" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lichaamsschets met het verschil per meetplek">${FIGURE}${svg}</svg>
+      <h2 class="card__title">Per body part</h2>
+      <p class="hint" style="margin:4px 0 6px">Green is the right direction, red the other. Left and right as in the mirror.</p>
+      <svg class="body" viewBox="0 0 ${W} ${H}" role="img" aria-label="Body outline with the change per body part">${FIGURE}${svg}</svg>
     </div>`;
   }
 
   /* ---------------- Thema ---------------- */
   // Elk thema is één tint (OKLCH-hue): achtergrond, vlakken, randen, tekst en accent worden er allemaal van afgeleid (styles.css).
   const ACCENTS = [
-    { key: 'leisteen', label: 'Leisteen' },
-    { key: 'zand', label: 'Zand' },
+    { key: 'leisteen', label: 'Slate' },
+    { key: 'zand', label: 'Sand' },
   ];
-  const MODES = [{ key: 'system', label: 'Automatisch' }, { key: 'dark', label: 'Donker' }, { key: 'light', label: 'Licht' }];
+  const MODES = [{ key: 'system', label: 'Automatic' }, { key: 'dark', label: 'Dark' }, { key: 'light', label: 'Light' }];
   const themeOf = () => {
     const t = { mode: 'dark', accent: 'leisteen', ...(state.settings.theme || {}) };
     if (!ACCENTS.some((a) => a.key === t.accent)) t.accent = 'leisteen'; // oude kleurthema's bestaan niet meer
@@ -727,11 +727,11 @@
   function themeHTML() {
     const t = themeOf();
     return `<div class="card">
-      <h2 class="card__title" style="margin-bottom:14px">Thema</h2>
-      <div class="segmented segmented--full" role="group" aria-label="Weergave">
+      <h2 class="card__title" style="margin-bottom:14px">Theme</h2>
+      <div class="segmented segmented--full" role="group" aria-label="Appearance">
         ${MODES.map((m) => `<button type="button" data-mode="${m.key}" aria-pressed="${m.key === t.mode}">${m.label}</button>`).join('')}
       </div>
-      <div class="swatches" role="group" aria-label="Accentkleur">
+      <div class="swatches" role="group" aria-label="Palette">
         ${ACCENTS.map((a) => `<button type="button" class="swatch" data-accent="${a.key}" aria-pressed="${a.key === t.accent}">
           <span class="swatch__dot" aria-hidden="true"></span><span class="swatch__label">${a.label}</span></button>`).join('')}
       </div>
@@ -749,11 +749,11 @@
     const list = snapshots();
     if (!list.length) return '';
     return `<div class="card">
-      <h2 class="card__title" style="margin-bottom:6px">Herstelpunten</h2>
-      <p class="prose" style="margin-bottom:10px">De app bewaart automatisch een kopie per dag (laatste 10). Tik om terug te zetten.</p>
+      <h2 class="card__title" style="margin-bottom:6px">Restore points</h2>
+      <p class="prose" style="margin-bottom:10px">The app automatically keeps one copy a day (last 10). Tap to restore.</p>
       <div class="list">${list.map((x, i) => `<button class="list__item" data-restore="${i}">
-        <div class="list__main"><div class="list__title">${fmtDate(x.day)}</div><div class="list__sub">${x.reason === 'update' ? 'Voor een update' : x.reason === 'restore' ? 'Voor het terugzetten' : 'Automatisch'}</div></div>
-        <div class="list__end">${plural(x.count, 'meting', 'metingen')}</div>${chev}</button>`).join('')}</div>
+        <div class="list__main"><div class="list__title">${fmtDate(x.day)}</div><div class="list__sub">${x.reason === 'update' ? 'Before an update' : x.reason === 'restore' ? 'Before a restore' : 'Automatic'}</div></div>
+        <div class="list__end">${plural(x.count, 'measurement', 'measurements')}${x.workouts ? ` · ${plural(x.workouts, 'workout', 'workouts')}` : ''}</div>${chev}</button>`).join('')}</div>
     </div>`;
   }
 
@@ -763,30 +763,30 @@
     const s = state.settings;
     el.innerHTML = `
       <form class="card" id="settingsForm" novalidate>
-        <h2 class="card__title" style="margin-bottom:14px">Profiel</h2>
-        <span class="field__label" style="display:block;margin-bottom:6px">Doel</span>
-        <div class="segmented segmented--full" role="group" aria-label="Doel" style="margin-bottom:14px">
-          <button type="button" data-goal-type="cut" aria-pressed="${!isBulk()}">Afvallen (cutten)</button>
-          <button type="button" data-goal-type="bulk" aria-pressed="${isBulk()}">Bijkomen (bulken)</button>
+        <h2 class="card__title" style="margin-bottom:14px">Profile</h2>
+        <span class="field__label" style="display:block;margin-bottom:6px">Goal</span>
+        <div class="segmented segmented--full" role="group" aria-label="Goal" style="margin-bottom:14px">
+          <button type="button" data-goal-type="cut" aria-pressed="${!isBulk()}">Lose weight (cut)</button>
+          <button type="button" data-goal-type="bulk" aria-pressed="${isBulk()}">Gain weight (bulk)</button>
         </div>
         <div class="field-grid">
-          <label class="field"><span class="field__label">Lengte <small>cm</small></span><input name="height" inputmode="decimal" value="${s.height ? fmt(s.height, 0) : ''}" placeholder="180"></label>
-          <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
+          <label class="field"><span class="field__label">Height <small>cm</small></span><input name="height" inputmode="decimal" value="${s.height ? fmt(s.height, 0) : ''}" placeholder="180"></label>
+          <label class="field"><span class="field__label">Goal weight <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75.0"></label>
         </div>
-        <label class="field"><span class="field__label">${isBulk() ? 'Bulk' : 'Cut'} gestart op</span><input type="date" name="goalStart" value="${s.goalStart || ''}"></label>
-        <p class="hint" style="margin-top:-6px">Vanaf deze datum rekenen "sinds start", je doelbalk en je mijlpalen. Leeg = vanaf je eerste meting.</p>
-        <button class="button button--primary" type="submit">Bewaar profiel</button>
+        <label class="field"><span class="field__label">${isBulk() ? 'Bulk' : 'Cut'} started on</span><input type="date" name="goalStart" value="${s.goalStart || ''}"></label>
+        <p class="hint" style="margin-top:-6px">“Since start”, your goal bar and your milestones count from this date. Empty = from your first measurement.</p>
+        <button class="button button--primary" type="submit">Save profile</button>
       </form>
 
       ${themeHTML()}
 
       <div class="card">
-        <h2 class="card__title" style="margin-bottom:6px">Back-up</h2>
-        <p class="prose" style="margin-bottom:14px">Je gegevens staan alleen op dit toestel (${plural(state.entries.length, 'meting', 'metingen')}). ${s.lastExport ? `Laatste back-up: ${fmtDate(s.lastExport)}.` : '<strong style="color:var(--bad)">Nog geen back-up gemaakt.</strong>'} Bewaar er af en toe een in Bestanden of iCloud Drive; dat is de enige kopie buiten de app.</p>
+        <h2 class="card__title" style="margin-bottom:6px">Backup</h2>
+        <p class="prose" style="margin-bottom:14px">Your data lives only on this device (${plural(state.entries.length, 'measurement', 'measurements')}${state.gym && state.gym.workouts && state.gym.workouts.length ? `, ${plural(state.gym.workouts.length, 'workout', 'workouts')}` : ''}). ${s.lastExport ? `Last backup: ${fmtDate(s.lastExport)}.` : '<strong style="color:var(--bad)">No backup made yet.</strong>'} Save one now and then to Files or iCloud Drive; it’s the only copy outside the app.</p>
         <div class="button-row">
-          <button class="button" data-action="export">Exporteer</button>
-          <button class="button" data-action="import">Importeer</button>
-          ${photos.length ? `<button class="button button-row__wide" data-action="export-photos">Exporteer met foto's (${photos.length})</button>` : ''}
+          <button class="button" data-action="export">Export</button>
+          <button class="button" data-action="import">Import</button>
+          ${photos.length ? `<button class="button button-row__wide" data-action="export-photos">Export with photos (${photos.length})</button>` : ''}
         </div>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
@@ -794,16 +794,16 @@
       ${snapshotsHTML()}
 
       <div class="card">
-        <h2 class="card__title" style="margin-bottom:10px">Gegevens</h2>
+        <h2 class="card__title" style="margin-bottom:10px">Data</h2>
         <div class="button-row">
-          <button class="button" data-action="demo">Demodata laden</button>
-          <button class="button button--danger" data-action="wipe">Alles wissen</button>
+          <button class="button" data-action="demo">Load demo data</button>
+          <button class="button button--danger" data-action="wipe">Erase everything</button>
         </div>
       </div>`;
   }
 
   /* ---------------- Foto's (IndexedDB, alleen op dit toestel) ---------------- */
-  const POSES = [{ key: 'front', label: 'Voor' }, { key: 'side', label: 'Zij' }, { key: 'back', label: 'Achter' }];
+  const POSES = [{ key: 'front', label: 'Front' }, { key: 'side', label: 'Side' }, { key: 'back', label: 'Back' }];
   const poseLabel = (k) => POSES.find((p) => p.key === k)?.label || k;
 
   const PhotoDB = (() => {
@@ -869,9 +869,9 @@
 
   function renderPhotos() {
     const el = viewEl('photos');
-    if (!photosLoaded) { el.innerHTML = '<p class="hint" style="text-align:center">Foto\'s laden…</p>'; return; }
+    if (!photosLoaded) { el.innerHTML = '<p class="hint" style="text-align:center">Loading photos…</p>'; return; }
     if (!photos.length) {
-      el.innerHTML = emptyState('Progressiefoto\'s', 'Neem foto\'s van voren, opzij en van achteren, telkens op dezelfde plek en met hetzelfde licht. Ze blijven alleen op dit toestel.', 'add-photos', 'Eerste foto\'s toevoegen');
+      el.innerHTML = emptyState('Progress photos', 'Take photos from the front, side and back, each time in the same spot with the same light. They stay on this device only.', 'add-photos', 'Add first photos');
       return;
     }
     if (!photoDates(ui.photoPose).length) ui.photoPose = POSES.find((p) => photoDates(p.key).length).key;
@@ -882,19 +882,19 @@
     const A = ui.photoA, B = ui.photoB;
     const a = photoOf(A, pose), b = photoOf(B, pose);
     const opts = (sel) => [...dates].reverse().map((d) => `<option value="${d}" ${d === sel ? 'selected' : ''}>${fmtDate(d)}</option>`).join('');
-    const alt = (d) => `${poseLabel(pose)}foto van ${fmtDate(d)}`;
+    const alt = (d) => `${poseLabel(pose)} photo from ${fmtDate(d)}`;
 
     let cmp;
     if (dates.length < 2) {
       cmp = `<figure class="photo-single"><img src="${photoUrl(b)}" alt="${alt(B)}"><figcaption>${fmtDate(B)}</figcaption></figure>
-        <p class="hint" style="margin:12px 0 0">Voeg op een andere datum ook een ${poseLabel(pose).toLowerCase()}foto toe om te vergelijken.</p>`;
+        <p class="hint" style="margin:12px 0 0">Add a ${poseLabel(pose).toLowerCase()} photo on another date to compare.</p>`;
     } else if (ui.photoMode === 'side') {
       cmp = `<div class="photo-pair">
         <figure><img src="${photoUrl(a)}" alt="${alt(A)}"><figcaption>${fmtShort(A)}</figcaption></figure>
         <figure><img src="${photoUrl(b)}" alt="${alt(B)}"><figcaption>${fmtShort(B)}</figcaption></figure>
       </div>`;
     } else {
-      cmp = `<div class="photo-slider" role="slider" tabindex="0" aria-label="Schuif tussen ${fmtShort(A)} en ${fmtShort(B)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="--pos:50%">
+      cmp = `<div class="photo-slider" role="slider" tabindex="0" aria-label="Slide between ${fmtShort(A)} and ${fmtShort(B)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="--pos:50%">
         <img src="${photoUrl(b)}" alt="${alt(B)}" draggable="false">
         <img class="photo-slider__top" src="${photoUrl(a)}" alt="${alt(A)}" draggable="false">
         <span class="photo-slider__handle" aria-hidden="true"></span>
@@ -906,32 +906,32 @@
     el.innerHTML = `
       <div class="card">
         <div class="card__head">
-          <div class="segmented" role="group" aria-label="Houding">
+          <div class="segmented" role="group" aria-label="Pose">
             ${POSES.map((p) => `<button type="button" data-pose="${p.key}" aria-pressed="${p.key === pose}" ${photoDates(p.key).length ? '' : 'disabled'}>${p.label}</button>`).join('')}
           </div>
-          ${dates.length > 1 ? `<div class="segmented" role="group" aria-label="Weergave">
-            <button type="button" data-photo-mode="slider" aria-pressed="${ui.photoMode !== 'side'}">Schuif</button>
-            <button type="button" data-photo-mode="side" aria-pressed="${ui.photoMode === 'side'}">Naast elkaar</button>
+          ${dates.length > 1 ? `<div class="segmented" role="group" aria-label="View">
+            <button type="button" data-photo-mode="slider" aria-pressed="${ui.photoMode !== 'side'}">Slider</button>
+            <button type="button" data-photo-mode="side" aria-pressed="${ui.photoMode === 'side'}">Side by side</button>
           </div>` : ''}
         </div>
         ${dates.length > 1 ? `<div class="compare-pick" style="margin-bottom:14px">
-          <label class="field"><span class="field__label">Van</span><select class="select" id="photoA">${opts(A)}</select></label>
+          <label class="field"><span class="field__label">From</span><select class="select" id="photoA">${opts(A)}</select></label>
           <span class="compare-pick__arrow" aria-hidden="true">→</span>
-          <label class="field"><span class="field__label">Tot</span><select class="select" id="photoB">${opts(B)}</select></label>
+          <label class="field"><span class="field__label">To</span><select class="select" id="photoB">${opts(B)}</select></label>
         </div>` : ''}
         ${cmp}
       </div>
-      <h2 class="section-title">Alle foto's · ${photos.length}</h2>
+      <h2 class="section-title">All photos · ${photos.length}</h2>
       ${days.map((d) => `<div class="card photo-day">
-        <div class="photo-day__head"><span>${fmtDate(d)}</span><button type="button" class="inline-link" data-add-photos="${d}">Aanpassen</button></div>
+        <div class="photo-day__head"><span>${fmtDate(d)}</span><button type="button" class="inline-link" data-add-photos="${d}">Edit</button></div>
         <div class="photo-day__grid">${POSES.map((p) => {
           const ph = photoOf(d, p.key);
           return ph
-            ? `<button type="button" class="thumb" data-photo="${ph.id}"><img src="${photoUrl(ph)}" alt="${p.label}foto van ${fmtDate(d)}" loading="lazy"><span>${p.label}</span></button>`
+            ? `<button type="button" class="thumb" data-photo="${ph.id}"><img src="${photoUrl(ph)}" alt="${p.label} photo from ${fmtDate(d)}" loading="lazy"><span>${p.label}</span></button>`
             : `<button type="button" class="thumb thumb--empty" data-add-photos="${d}"><span>+ ${p.label}</span></button>`;
         }).join('')}</div>
       </div>`).join('')}
-      <p class="hint" style="text-align:center">Foto's staan alleen op dit toestel. Neem ze mee in je back-up via Instellingen.</p>`;
+      <p class="hint" style="text-align:center">Photos are stored on this device only. Include them in your backup via Settings.</p>`;
   }
 
   // Foto's toevoegen
@@ -949,7 +949,7 @@
       return `<label class="pose-slot${src ? ' has-img' : ''}">
         <input class="sr" type="file" accept="image/*" data-slot="${p.key}">
         <span class="pose-slot__img">${src ? `<img src="${src}" alt="">` : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'}</span>
-        <span class="pose-slot__label">${p.label}${src && !file ? ' · vervang' : ''}</span>
+        <span class="pose-slot__label">${p.label}${src && !file ? ' · replace' : ''}</span>
       </label>`;
     }).join('');
   }
@@ -970,9 +970,9 @@
     const date = photoForm.date.value;
     if (!date) { photoForm.date.focus(); return; }
     const poses = Object.keys(pending);
-    if (!poses.length) { toast('Kies minstens één foto'); return; }
+    if (!poses.length) { toast('Pick at least one photo'); return; }
     const btn = photoForm.querySelector('[type="submit"]');
-    btn.disabled = true; btn.textContent = 'Bezig…';
+    btn.disabled = true; btn.textContent = 'Saving…';
     try {
       for (const pose of poses) {
         const { blob, w, h } = await compressImage(pending[pose]);
@@ -982,12 +982,12 @@
         photos = photos.filter((p) => p.id !== rec.id).concat(rec);
       }
       ui.photoB = date;
-      toast(poses.length > 1 ? "Foto's bewaard" : 'Foto bewaard');
+      toast(poses.length > 1 ? 'Photos saved' : 'Photo saved');
       photoSheet.close();
       render();
     } catch {
-      toast('Bewaren mislukt: opslag vol of foto onleesbaar');
-    } finally { btn.disabled = false; btn.textContent = 'Bewaar'; }
+      toast('Saving failed: storage full or photo unreadable');
+    } finally { btn.disabled = false; btn.textContent = 'Save'; }
   });
 
   // Foto bekijken / verwijderen
@@ -997,20 +997,20 @@
     viewing = photos.find((p) => p.id === id);
     if (!viewing) return;
     $('#viewerImg').src = photoUrl(viewing);
-    $('#viewerImg').alt = `${poseLabel(viewing.pose)}foto van ${fmtDate(viewing.date)}`;
+    $('#viewerImg').alt = `${poseLabel(viewing.pose)} photo from ${fmtDate(viewing.date)}`;
     $('#viewerCap').textContent = `${poseLabel(viewing.pose)} · ${fmtDate(viewing.date)}`;
     viewer.showModal();
   }
   $('#viewerDelete').addEventListener('click', async () => {
-    if (!viewing || !confirm(`${poseLabel(viewing.pose)}foto van ${fmtDate(viewing.date)} verwijderen? Dit kan niet ongedaan worden.`)) return;
+    if (!viewing || !confirm(`Delete ${poseLabel(viewing.pose).toLowerCase()} photo from ${fmtDate(viewing.date)}? This can’t be undone.`)) return;
     try {
       await PhotoDB.del(viewing.id);
       photos = photos.filter((p) => p !== viewing);
       dropUrl(viewing.id);
       viewer.close();
-      toast('Foto verwijderd');
+      toast('Photo deleted');
       render();
-    } catch { toast('Verwijderen mislukt'); }
+    } catch { toast('Delete failed'); }
   });
 
   // Schuifbalk: slepen of tikken, en pijltjestoetsen.
@@ -1054,10 +1054,10 @@
   // Nog te bouwen categorieën
   function renderSoon(title, text) {
     return () => {
-      viewEl(ui.view).innerHTML = `<div class="card empty"><span class="soon">Binnenkort</span><h2>${title}</h2><p>${text}</p></div>`;
+      viewEl(ui.view).innerHTML = `<div class="card empty"><span class="soon">Coming soon</span><h2>${title}</h2><p>${text}</p></div>`;
     };
   }
-  const renderFood = renderSoon('Calorieën bijhouden', 'Hier komt je voeding: wat je eet, je calorieën en eiwitten per dag.');
+  const renderFood = renderSoon('Calorie tracking', 'Your nutrition will live here: what you eat, your calories and protein per day.');
 
   const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, photos: renderPhotos, food: renderFood, settings: renderSettings };
 
@@ -1075,7 +1075,7 @@
     document.title = ui.view === 'overview' ? 'Gainly' : `${TITLES[ui.view]} · Gainly`;
     const fab = $('#fab');
     fab.hidden = !['overview', 'log', 'photos'].includes(ui.view);
-    fab.setAttribute('aria-label', ui.view === 'photos' ? "Foto's toevoegen" : 'Nieuwe meting');
+    fab.setAttribute('aria-label', ui.view === 'photos' ? 'Add photos' : 'New measurement');
     RENDER[ui.view]();
     gym?.afterRender?.();
     saveUi();
@@ -1100,12 +1100,12 @@
     for (const m of METRICS) (groups[m.group] ||= []).push(m);
     $('#measureFields').innerHTML = Object.entries(groups).map(([g, list], gi) => `
       <fieldset class="fieldset"><legend>${g}</legend>
-        ${g === 'Omtrek' ? '<p class="measure-tip">Meet altijd op hetzelfde moment (bv. \'s ochtends voor het ontbijt), op de blote huid, met het lint strak maar zonder in te snijden. Tik op <b>i</b> voor uitleg per maat.</p>' : ''}
+        ${g === 'Circumference' ? '<p class="measure-tip">Always measure at the same moment (e.g. in the morning before breakfast), on bare skin, with the tape snug but not digging in. Tap <b>i</b> for how to measure each one.</p>' : ''}
         <div class="field-grid${gi === 0 ? ' field-grid--one' : ''}">
         ${list.map((m) => `<div class="field">
           <div class="field__row">
             <label class="field__label" for="m_${m.key}">${m.label} <small>${m.unit}</small></label>
-            <button type="button" class="info" data-tip="${m.key}" aria-expanded="false" aria-controls="tip_${m.key}" aria-label="Hoe meet ik ${m.label.toLowerCase()}?">i</button>
+            <button type="button" class="info" data-tip="${m.key}" aria-expanded="false" aria-controls="tip_${m.key}" aria-label="How do I measure ${m.label.toLowerCase()}?">i</button>
           </div>
           <input id="m_${m.key}" name="m_${m.key}" inputmode="decimal" autocomplete="off">
           <p class="field__tip" id="tip_${m.key}" hidden>${esc(tipFor(m.key))}</p>
@@ -1119,7 +1119,7 @@
     measureSheet.classList.toggle('is-quick', quick);
     for (const t of measureForm.querySelectorAll('.field__tip')) t.hidden = true;
     for (const b of measureForm.querySelectorAll('.info')) b.setAttribute('aria-expanded', 'false');
-    $('#measureTitle').textContent = quick ? 'Snel wegen' : entry ? 'Meting bewerken' : 'Nieuwe meting';
+    $('#measureTitle').textContent = quick ? 'Quick weigh-in' : entry ? 'Edit measurement' : 'New measurement';
     $('#measureDelete').hidden = !entry;
     measureForm.date.value = entry ? entry.date : todayISO();
     measureForm.note.value = entry ? entry.note || '' : '';
@@ -1157,8 +1157,8 @@
       if (invalid && !bad) bad = input;
       if (n != null && !invalid) values[m.key] = Math.round(n * 10) / 10;
     }
-    if (bad) { bad.focus(); toast('Controleer de rood omrande waarde'); return; }
-    if (!Object.keys(values).length) { toast('Vul minstens één maat in'); return; }
+    if (bad) { bad.focus(); toast('Check the value outlined in red'); return; }
+    if (!Object.keys(values).length) { toast('Enter at least one measurement'); return; }
     const note = measureForm.note.value.trim();
 
     if (editingEntry) {
@@ -1169,16 +1169,16 @@
         editingEntry.note = [clash.note, note].filter(Boolean).join(' · ');
         state.entries = state.entries.filter((e) => e !== clash);
       }
-      toast('Meting bijgewerkt');
+      toast('Measurement updated');
     } else {
       const existing = state.entries.find((e) => e.date === date);
       if (existing) {
         existing.values = { ...existing.values, ...values };
         if (note) existing.note = [existing.note, note].filter(Boolean).join(' · ');
-        toast('Toegevoegd aan meting van ' + fmtShort(date));
+        toast('Added to the measurement of ' + fmtShort(date));
       } else {
         state.entries.push({ id: uid(), date, values, note });
-        toast('Meting bewaard');
+        toast('Measurement saved');
       }
     }
     save();
@@ -1188,11 +1188,11 @@
   });
 
   $('#measureDelete').addEventListener('click', () => {
-    if (!editingEntry || !confirm(`Meting van ${fmtDate(editingEntry.date)} verwijderen?`)) return;
+    if (!editingEntry || !confirm(`Delete the measurement from ${fmtDate(editingEntry.date)}?`)) return;
     state.entries = state.entries.filter((e) => e !== editingEntry);
     save({ allowEmpty: true });
     measureSheet.close();
-    toast('Meting verwijderd');
+    toast('Measurement deleted');
     render();
   });
 
@@ -1206,14 +1206,14 @@
   async function exportData(withPhotos = false) {
     const payload = { app: 'gainly', version: 1, exported: new Date().toISOString(), ...state };
     if (withPhotos) {
-      toast("Foto's inpakken…");
+      toast('Packing photos…');
       payload.photos = await Promise.all(photos.map(async (p) => ({ id: p.id, date: p.date, pose: p.pose, w: p.w, h: p.h, t: p.t, data: await blobToB64(p.blob) })));
     }
     const json = JSON.stringify(payload, null, withPhotos ? 0 : 2);
-    const name = `gainly-backup-${todayISO()}${withPhotos ? '-met-fotos' : ''}.json`;
+    const name = `gainly-backup-${todayISO()}${withPhotos ? '-with-photos' : ''}.json`;
     const file = new File([json], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Gainly back-up' }); markExported(); return; }
+      try { await navigator.share({ files: [file], title: 'Gainly backup' }); markExported(); return; }
       catch (e) { if (e.name === 'AbortError') return; }
     }
     const a = document.createElement('a');
@@ -1234,7 +1234,7 @@
       const { photos: incoming, ...rest } = data;
       const pics = Array.isArray(incoming) ? incoming.filter((p) => p && p.id && p.date && p.pose && typeof p.data === 'string') : [];
       const next = normalize(rest);
-      if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')}${pics.length ? ` en ${pics.length} foto's` : ''} importeren? Dit vervangt je huidige metingen${pics.length ? "; foto's worden toegevoegd" : ''}.`)) return;
+      if (!confirm(`Import backup with ${plural(next.entries.length, 'measurement', 'measurements')}${next.gym && next.gym.workouts ? ` and ${plural(next.gym.workouts.length, 'workout', 'workouts')}` : ''}${pics.length ? ` and ${pics.length} photos` : ''}? This replaces your current data${pics.length ? '; photos are added' : ''}.`)) return;
       snapshot('restore');
       state = next;
       applyTheme();
@@ -1249,10 +1249,10 @@
           photos = photos.filter((x) => x.id !== rec.id).concat(rec);
         } catch { failed++; }
       }
-      toast(failed ? `Geïmporteerd, maar ${failed} foto's mislukt` : 'Back-up geïmporteerd');
+      toast(failed ? `Imported, but ${failed} photos failed` : 'Backup imported');
       render();
     } catch {
-      toast('Dit is geen geldig Gainly-back-upbestand');
+      toast('This isn’t a valid Gainly backup file');
     }
   }
 
@@ -1288,7 +1288,7 @@
       // Nieuwe fase: start vandaag (aan te passen onder Profiel).
       state.settings = { ...state.settings, goalType: t.dataset.goalType, goalStart: todayISO() };
       save(); syncMilestones(false);
-      toast(`${t.dataset.goalType === 'bulk' ? 'Bulk' : 'Cut'} gestart vandaag. Pas de datum aan als dat niet klopt.`);
+      toast(`${t.dataset.goalType === 'bulk' ? 'Bulk' : 'Cut'} started today. Change the date if that’s not right.`);
       return render();
     }
     if (t.dataset.mode) return setTheme({ mode: t.dataset.mode });
@@ -1302,9 +1302,9 @@
     }
     if (t.dataset.restore) {
       const x = snapshots()[Number(t.dataset.restore)];
-      if (!x || !confirm(`Gegevens van ${fmtDate(x.day)} terugzetten (${plural(x.count, 'meting', 'metingen')})? Je huidige stand wordt eerst zelf een herstelpunt.`)) return;
+      if (!x || !confirm(`Restore data from ${fmtDate(x.day)} (${plural(x.count, 'measurement', 'measurements')})? Your current data becomes a restore point first.`)) return;
       snapshot('restore');
-      state = normalize(x.data); save({ allowEmpty: true }); applyTheme(); syncMilestones(false); toast('Teruggezet'); return go('overview');
+      state = normalize(x.data); save({ allowEmpty: true }); applyTheme(); syncMilestones(false); toast('Restored'); return go('overview');
     }
     if (t.dataset.editEntry) return openMeasure(state.entries.find((e) => e.id === t.dataset.editEntry));
     if (t.dataset.pose) { ui.photoPose = t.dataset.pose; return render(); }
@@ -1318,14 +1318,14 @@
       case 'export-photos': return exportData(true);
       case 'import': return $('#importFile').click();
       case 'demo':
-        if (state.entries.length && !confirm('Demodata vervangt je huidige metingen. Doorgaan?')) return;
-        snapshot('restore'); state = demoData(); save(); syncMilestones(false); toast('Demodata geladen'); return go('overview');
+        if (state.entries.length && !confirm('Demo data replaces your current measurements. Continue?')) return;
+        snapshot('restore'); state = demoData(); save(); syncMilestones(false); toast('Demo data loaded'); return go('overview');
       case 'wipe': {
-        if (!confirm(`Alle metingen, trainingen${photos.length ? " en foto's" : ''} definitief wissen? Maak eerst een back-up als je twijfelt.`)) return;
+        if (!confirm(`Permanently erase all measurements, workouts${photos.length ? ' and photos' : ''}? Make a backup first if you’re unsure.`)) return;
         snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true }); // ook trainingen
         PhotoDB.clear().catch(() => {});
         photos.forEach((p) => dropUrl(p.id)); photos = [];
-        toast('Alles gewist'); return render();
+        toast('Everything erased'); return render();
       }
     }
   });
@@ -1350,12 +1350,12 @@
     const gBad = Number.isNaN(goalWeight) || (goalWeight != null && (goalWeight < 30 || goalWeight > 300));
     f.height.setAttribute('aria-invalid', hBad);
     f.goalWeight.setAttribute('aria-invalid', gBad);
-    if (hBad || gBad) { toast('Controleer je lengte en streefgewicht'); return; }
+    if (hBad || gBad) { toast('Check your height and goal weight'); return; }
     const goalStart = f.goalStart.value || null;
     state.settings = { ...state.settings, height, goalWeight, goalStart };
     save();
     syncMilestones(false);
-    toast('Profiel bewaard');
+    toast('Profile saved');
   });
 
   // + : tikken = volledige meting (of foto's op het fototabblad), ingedrukt houden = snel wegen.
