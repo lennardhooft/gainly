@@ -941,6 +941,7 @@ window.GainlyGym = function (core) {
   }
   function openRoutineView(id) {
     rvId = id;
+    $('#rvEdit').dataset.id = id;
     renderRoutineView();
     if (!routineView.open) routineView.showModal();
     $('#routineViewBody').scrollTop = 0;
