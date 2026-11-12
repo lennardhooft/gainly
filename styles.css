@@ -1470,3 +1470,9 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .pose-slot__x.is-undo { width: auto; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .sync-form { display: grid; gap: 10px; }
 .sync-form .field { margin: 0; }
+.sync-copies { margin-top: 12px; }
+.sync-copy { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.sync-copy:last-child { border-bottom: 0; }
+.sync-copy span { display: grid; gap: 2px; min-width: 0; }
+.sync-copy small { color: var(--muted); font-size: 12px; }
+.sync-copy .button { flex: none; min-height: 36px; padding: 0 14px; }

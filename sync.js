@@ -169,6 +169,42 @@ window.GainlySync = function GainlySync(core) {
     if (changed) await core.reloadPhotos();
   }
 
+  // ---------- daily online copies (start of each day, last 30 days) ----------
+  const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  async function dailyBackup() {
+    const day = localDay();
+    if (meta.backupDay === day) return;
+    const { error } = await sb.rpc('gainly_daily_backup', { p_day: day });
+    if (error) { console.warn('daily copy', error.message); return; } // never block syncing
+    meta.backupDay = day; writeMeta();
+  }
+  const copies = { open: false, list: null, err: '' };
+  async function loadCopies() {
+    copies.list = null; copies.err = ''; refreshCard();
+    try {
+      await client();
+      const { data, error } = await sb.from('gainly_backups').select('day, summary, created_at').order('day', { ascending: false });
+      if (error) throw error;
+      copies.list = data || [];
+    } catch (e) { copies.err = e.message || 'Couldn’t load the copies'; }
+    refreshCard();
+  }
+  async function restoreCopy(day) {
+    const label = new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (!await ask(`Restore everything to how it was at the start of ${label}? Changes made after that are replaced. A restore point of your current data is saved on this iPhone first.`, 'Restore')) return;
+    try {
+      await client();
+      const { data, error } = await sb.from('gainly_backups').select('data').eq('user_id', user.id).eq('day', day).single();
+      if (error) throw error;
+      core.snapshot('before-restore');
+      core.setState(data.data);
+      meta.dirty = true; writeMeta();
+      copies.open = false;
+      await syncNow();
+      toast(`Restored to ${label}`);
+    } catch (e) { toast('Restore failed: ' + (e.message || 'try again')); }
+  }
+
   // ---------- the sync loop ----------
   let running = null, pushTimer = 0, lastPull = 0;
   async function syncNow({ first = false, quiet = true } = {}) {
@@ -179,6 +215,7 @@ window.GainlySync = function GainlySync(core) {
         if (!user) return;
         if (!navigator.onLine) { setStatus('offline'); return; }
         setStatus('syncing');
+        await dailyBackup();
         const r = await syncState({ first });
         await syncPhotos();
         lastPull = Date.now();
@@ -223,6 +260,7 @@ window.GainlySync = function GainlySync(core) {
     try { localStorage.removeItem(AUTH_KEY); } catch { /* ok */ }
     user = null;
     meta = { remoteAt: null, dirty: false, lastSync: null, photoUp: [], photoDel: [], photoKnown: [] }; writeMeta();
+    Object.assign(copies, { open: false, list: null, err: '' });
     Object.assign(login, { email: '', busy: false });
     refreshCard(); toast('Signed out');
   }
@@ -245,7 +283,13 @@ window.GainlySync = function GainlySync(core) {
         <div class="button-row">
           <button type="button" class="button" data-sync="now">Sync now</button>
           <button type="button" class="button" data-sync="signout">Sign out</button>
-        </div>`;
+          <button type="button" class="button button-row__wide" data-sync="copies" aria-expanded="${copies.open}">${copies.open ? 'Hide daily copies' : 'Daily copies (undo a mistake)'}</button>
+        </div>
+        ${copies.open ? `<div class="sync-copies">
+          <p class="hint" style="margin:0 0 8px">Gainly keeps how your data looked at the start of each day, for 30 days. Photos aren’t part of these copies.</p>
+          ${copies.err ? `<p class="hint" style="color:var(--bad)">${esc(copies.err)}</p>` : !copies.list ? '<p class="hint">Loading…</p>' : !copies.list.length ? '<p class="hint">No copies yet. The first one is made at the next sync.</p>'
+          : `<div class="list">${copies.list.map((c) => `<div class="sync-copy"><span><b>${esc(new Date(c.day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }))}</b><small>${esc(c.summary || '')}</small></span><button type="button" class="button" data-sync="restore" data-day="${c.day}">Restore</button></div>`).join('')}</div>`}
+        </div>` : ''}`;
     }
     return `<h2 class="card__title" style="margin-bottom:6px">Cloud sync</h2>
       <p class="prose" style="margin-bottom:12px">Keep a copy of everything online, so you never lose it and can use Gainly on another device. First time? Choose an e-mail and password and tap <b>Create account</b>.</p>
@@ -287,6 +331,8 @@ window.GainlySync = function GainlySync(core) {
     if (!b) return;
     if (b.dataset.sync === 'now') syncNow({ quiet: false });
     if (b.dataset.sync === 'signout') signOut();
+    if (b.dataset.sync === 'copies') { copies.open = !copies.open; if (copies.open) loadCopies(); else refreshCard(); }
+    if (b.dataset.sync === 'restore') restoreCopy(b.dataset.day);
   });
 
   // Start: if signed in before, sync in the background
