@@ -974,7 +974,10 @@ body[data-group="gym"] .subnav[data-group="gym"] { display: grid; animation: sub
   border-radius: 10px;
   transition: background 0.2s;
 }
-.set-row--time { grid-template-columns: 34px minmax(0, 1fr) 120px 40px; }
+.set-row--time { grid-template-columns: 34px minmax(0, 1fr) 84px 40px 40px; }
+.set-timer { width: 36px; height: 36px; border: 0; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; color: var(--text); justify-self: end; }
+.set-timer svg { width: 16px; height: 16px; fill: currentColor; }
+.set-timer.is-running { background: var(--accent); color: var(--accent-ink); animation: blink 1.4s infinite; }
 .set-row--head { font-size: 11px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 2px; }
 .set-row--head span { text-align: center; }
 .set-row--head span:nth-child(2) { text-align: left; padding-left: 4px; }

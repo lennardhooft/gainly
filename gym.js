@@ -354,7 +354,7 @@ window.GainlyGym = function (core) {
       id: a.id, name: (a.name || 'Workout').trim() || 'Workout', start: a.start, end: Date.now(), routineId: a.routineId || null, note: a.note || '',
       items: a.items.map((it) => {
         const note = (g.exNotes || {})[it.exId];
-        return { exId: it.exId, ...(note ? { note } : {}), sets: it.sets.filter((st) => st.d).map(({ d, pw, pr, ps, ...st }) => st) };
+        return { exId: it.exId, ...(note ? { note } : {}), sets: it.sets.filter((st) => st.d).map(({ d, pw, pr, ps, run, ...st }) => st) };
       }).filter((it) => it.sets.length),
     };
     wk.prs = computePRs(wk);
@@ -468,6 +468,11 @@ window.GainlyGym = function (core) {
       }
     } else restBar.hidden = true;
     document.body.classList.toggle('has-rest', !restBar.hidden);
+    if (a) a.items.forEach((it, i) => it.sets.forEach((st, j) => {
+      if (!st.run) return;
+      const inp = document.querySelector(`.set-row[data-i="${i}"][data-j="${j}"] [data-gin="s"]`);
+      if (inp) inp.value = clock(runSecs(st));
+    }));
     if (!plateBtn.hidden && document.activeElement !== plateInput) { plateInput = null; renderPlates(); }
     if (!!a !== !!wakeLock && !wakePending) syncWakeLock();
   }
@@ -547,6 +552,14 @@ window.GainlyGym = function (core) {
     return prev[j] || (j > 0 ? it.sets[j - 1] : null);
   }
   const minutes = (s) => (s == null ? '' : fmt(s / 60, s % 60 ? 1 : 0));
+  const parseTime = (v) => {
+    const t = String(v ?? '').trim();
+    if (!t) return null;
+    if (t.includes(':')) { const [m, sec] = t.split(':').map((x) => parseNum(x) || 0); return Math.round(m * 60 + sec); }
+    const n = parseNum(t);
+    return Number.isNaN(n) ? NaN : Math.round(n * 60);
+  };
+  const runSecs = (st) => (st.run ? Math.max(0, Math.round((Date.now() - st.run) / 1000)) : st.s || 0);
 
   function exCardHTML(it, i) {
     const ex = exById(it.exId);
@@ -555,14 +568,17 @@ window.GainlyGym = function (core) {
     const note = (G().exNotes || {})[it.exId] || '';
     let n = 0;
     const head = ex.type === 'time'
-      ? '<span>Set</span><span>Previous</span><span class="set-head--wide">Minutes</span><span></span>'
+      ? '<span>Set</span><span>Previous</span><span class="set-head--wide">Time</span><span></span><span></span>'
       : `<span>Set</span><span>Previous</span><span>${ex.type === 'bw' ? '+kg' : 'kg'}</span><span>Reps</span><span></span>`;
     const rows = it.sets.map((st, j) => {
       const label = TYPE_LABEL[st.t] || String(++n);
       const p = prev[j];
       const src = sourceFor(it, j, prev);
       const inputs = ex.type === 'time'
-        ? `<input class="set-in set-in--wide" data-gin="s" inputmode="decimal" enterkeyhint="done" placeholder="${src && src.s ? minutes(src.s) : 'min'}" value="${minutes(st.s)}" aria-label="Minutes, set ${j + 1}">`
+        ? `<input class="set-in set-in--wide" data-gin="s" inputmode="decimal" enterkeyhint="done" placeholder="${src && src.s ? clock(src.s) : '0:00'}" value="${st.run || st.s != null ? clock(runSecs(st)) : ''}" aria-label="Time, set ${j + 1} (minutes, or m:ss)" ${st.run ? 'readonly' : ''}>
+           <button type="button" class="set-timer${st.run ? ' is-running' : ''}" data-g="sw" aria-label="${st.run ? 'Stop' : 'Start'} stopwatch, set ${j + 1}">${st.run
+             ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
+             : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>'}</button>`
         : `<input class="set-in" data-gin="w" inputmode="decimal" enterkeyhint="next" placeholder="${src && src.w != null ? fmtKg(src.w) : ex.type === 'bw' ? '0' : 'kg'}" value="${fmtKg(st.w)}" aria-label="Kilograms, set ${j + 1}">
            <input class="set-in" data-gin="r" inputmode="numeric" enterkeyhint="done" placeholder="${src && src.r != null ? src.r : 'reps'}" value="${st.r ?? ''}" aria-label="Reps, set ${j + 1}">`;
       const rec = st.d && isRecordSet(st, hb);
@@ -1585,6 +1601,7 @@ window.GainlyGym = function (core) {
         ensureAudio();
         const it = a.items[p.i], st = it.sets[p.j], ex = exById(it.exId);
         if (st.d) { st.d = false; saveSoon(); core.render(); return; }
+        if (st.run) { st.s = runSecs(st); delete st.run; }
         const src = sourceFor(it, p.j, prevSets(it.exId)) || {};
         if (ex.type === 'time') { if (st.s == null) st.s = src.s ?? null; }
         else {
@@ -1599,6 +1616,14 @@ window.GainlyGym = function (core) {
           const hb = histBest(it.exId);
           if (isRecordSet(st, hb)) toast(st.w > hb.kg + 1e-9 ? `🏆 New record: heaviest ${ex.name} (${fmtKg(st.w)} kg)` : `🏆 New record: best 1RM ${ex.name} (≈ ${fmtKg(Math.round(e1rm(st.w, st.r)))} kg)`);
         }
+        saveSoon(); core.render();
+        return;
+      }
+      case 'sw': {
+        const p = rowOf(b); if (!p || !a) return;
+        const st = a.items[p.i].sets[p.j];
+        if (st.run) { st.s = runSecs(st); delete st.run; }
+        else { ensureAudio(); st.run = Date.now() - (st.s || 0) * 1000; }
         saveSoon(); core.render();
         return;
       }
@@ -1738,9 +1763,9 @@ window.GainlyGym = function (core) {
     if (k === 'w' || k === 'r' || k === 's') {
       const p = rowOf(t); if (!p || !a) return;
       const st = a.items[p.i].sets[p.j];
-      const n = parseNum(t.value);
+      const n = k === 's' ? 0 : parseNum(t.value);
       if (Number.isNaN(n)) return;
-      if (k === 's') st.s = n == null ? null : Math.round(n * 60);
+      if (k === 's') { const sec = parseTime(t.value); if (Number.isNaN(sec)) return; st.s = sec; }
       else if (k === 'r') st.r = n == null ? null : Math.round(n);
       else st.w = n;
       if (st.d) updateHead();
