@@ -33,7 +33,23 @@
     { key: 'all', label: 'Alles', days: Infinity },
   ];
 
-  const TITLES = { overview: 'Overzicht', compare: 'Vergelijk', settings: 'Instellingen' };
+  const TITLES = { overview: 'Overzicht', compare: 'Vergelijk', photos: "Foto's", settings: 'Instellingen' };
+
+  // Uitleg per meetplek (L/R delen dezelfde tekst).
+  const TIPS = {
+    weight: "Weeg je 's ochtends na het toilet, nuchter en in ondergoed, altijd op dezelfde weegschaal op een harde vloer. Schommelingen van een kilo per dag zijn normaal: kijk naar de trend.",
+    neck: 'Net onder de adamsappel, het lint aan de voorkant iets schuin naar beneden. Recht vooruit kijken, schouders ontspannen.',
+    shoulders: 'Rond het breedste punt van je schouders, over de bovenarmen. Armen ontspannen langs je lichaam. Lukt het best met iemand die helpt.',
+    chest: 'Over de tepels en onder de oksels door, lint horizontaal. Meet na een normale uitademing.',
+    waist: 'Halverwege je onderste rib en de bovenkant van je heupbeen, meestal het smalste punt. Na een normale uitademing, buik niet intrekken.',
+    belly: 'Precies over je navel, lint horizontaal. Ontspannen staan, na een normale uitademing.',
+    hips: 'Rond het breedste punt van je billen, voeten tegen elkaar. Kijk in de spiegel of het lint overal horizontaal zit.',
+    arm: 'Op het dikste punt van je bovenarm, arm ontspannen naast je lichaam (niet aanspannen). Meet elke keer op dezelfde plek.',
+    forearm: 'Op het dikste punt net onder de elleboog, hand open en ontspannen.',
+    thigh: 'Ongeveer 15 cm boven de knieschijf (of net onder de bil), gewicht op beide benen. Kies één plek en blijf die gebruiken.',
+    calf: 'Op het dikste punt van je kuit, staand met je gewicht op beide benen.',
+  };
+  const tipFor = (key) => TIPS[key] || TIPS[key.replace(/[LR]$/, '')];
 
   /* ---------------- Helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -114,7 +130,7 @@
     } catch { toast('Opslaan mislukt: opslag vol of geblokkeerd'); }
   }
 
-  const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null };
+  const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null, photoPose: 'front', photoMode: 'slider', photoA: null, photoB: null };
   try { Object.assign(ui, JSON.parse(sessionStorage.getItem('vorm:ui')) || {}); } catch { /* ok */ }
   const saveUi = () => { try { sessionStorage.setItem('vorm:ui', JSON.stringify(ui)); } catch { /* ok */ } };
 
@@ -266,12 +282,13 @@
       const ref7 = valueAt('weight', addDays(last.date, -7));
       const d7 = ref7 && ref7.date !== last.date ? last.value - ref7.value : null;
       let goal = '';
+      let reached = false;
       if (s.goalWeight && first.value !== s.goalWeight) {
         const total = first.value - s.goalWeight;
         const done = first.value - last.value;
         const pct = Math.max(0, Math.min(1, done / total));
         const left = last.value - s.goalWeight;
-        const reached = Math.sign(left) !== Math.sign(total) || Math.abs(left) < 0.05;
+        reached = Math.sign(left) !== Math.sign(total) || Math.abs(left) < 0.05;
         goal = `<div class="progress">
           <div class="progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct * 100)}" aria-label="Voortgang naar streefgewicht"><span style="width:${pct * 100}%"></span></div>
           <div class="progress__text"><span>${reached ? 'Doel bereikt 🎉' : `Nog ${fmt(Math.abs(left))} kg tot ${fmt(s.goalWeight)} kg`}</span><span>${Math.round(pct * 100)}%</span></div>
@@ -286,8 +303,10 @@
           <div class="stat"><span class="stat__label">30 dagen</span><span class="stat__value">${d30 != null ? deltaHTML(M.weight, d30) : '—'}</span></div>
         </div>
         ${goal}
+        ${forecastHTML(last, reached)}
       </div>`;
     }
+    hero += badgesHTML();
 
     const available = metricsWithData();
     if (!available.some((m) => m.key === ui.metric)) ui.metric = available[0].key;
@@ -322,7 +341,7 @@
       <h2 class="section-title">Alle maten · sinds start</h2>
       <div class="metric-grid">${cards}</div>
       ${logHTML()}
-      <p class="hint" style="text-align:center">Tik op een meting om ze aan te passen of te verwijderen.</p>`;
+      <p class="hint" style="text-align:center">Tik op een meting om ze aan te passen of te verwijderen. Houd + ingedrukt om snel alleen je gewicht in te geven.</p>`;
 
     const range = RANGES.find((r) => r.key === ui.range) || RANGES[RANGES.length - 1];
     const from = range.days === Infinity ? '0000-00-00' : addDays(todayISO(), -range.days);
@@ -331,6 +350,144 @@
       unit: m.unit, label: m.label,
       goal: m.key === 'weight' && s.goalWeight ? s.goalWeight : null,
     });
+  }
+
+  /* ---------------- Voorspelling ---------------- */
+  // Lineaire trend over de laatste 6 weken (min. 3 wegingen over min. 10 dagen).
+  function forecast() {
+    const w = series('weight');
+    if (w.length < 3) return null;
+    const last = w[w.length - 1];
+    const pts = w.filter((p) => daysBetween(p.date, last.date) <= 42);
+    if (pts.length < 3 || daysBetween(pts[0].date, last.date) < 10) return null;
+    const xs = pts.map((p) => daysBetween(pts[0].date, p.date));
+    const ys = pts.map((p) => p.value);
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let sxy = 0, sxx = 0;
+    xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; });
+    const slope = sxy / sxx; // kg per dag
+    return { slope, perWeek: slope * 7, weeks: Math.round(daysBetween(pts[0].date, last.date) / 7) };
+  }
+
+  const ICON_TREND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>';
+  function forecastHTML(last, reached) {
+    const f = forecast();
+    if (!f) return '';
+    const g = state.settings.goalWeight;
+    const pw = `${deltaHTML(M.weight, f.perWeek, 2)} per week`;
+    let txt;
+    if (Math.abs(f.perWeek) < 0.05) txt = `Je gewicht is stabiel de laatste ${plural(f.weeks, 'week', 'weken')}.`;
+    else if (g && !reached) {
+      const need = g - last.value;
+      if (Math.sign(need) === Math.sign(f.slope)) {
+        const days = Math.round(need / f.slope);
+        txt = days > 3 * 365
+          ? `Aan je tempo van ${pw} duurt het nog meer dan drie jaar tot ${fmt(g)} kg.`
+          : `Aan je tempo van ${pw} bereik je ${fmt(g)} kg rond <strong>${fmtDate(addDays(last.date, days))}</strong>.`;
+      } else txt = `Je tempo is ${pw}, weg van je doel van ${fmt(g)} kg.`;
+    } else if (!g) txt = `Je tempo: ${pw}. <button type="button" class="inline-link" data-tab-go="settings">Stel een streefgewicht in</button> om te zien wanneer je het haalt.`;
+    else txt = `Je tempo: ${pw}.`;
+    return `<p class="forecast">${ICON_TREND}<span>${txt}</span></p>`;
+  }
+
+  /* ---------------- Mijlpalen ---------------- */
+  const MS_KG = [2.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50];
+  const MS_WAIST = [5, 10, 15, 20, 25];
+  const MS_TAPE = [10, 25, 50, 75, 100];
+  const MS_COUNT = [5, 10, 25, 50, 100, 200];
+  const kgTxt = (k) => fmt(k, k % 1 ? 1 : 0);
+
+  function milestones() {
+    const out = [];
+    const w = series('weight');
+    if (w.length > 1) {
+      const start = w[0].value;
+      const hit = new Set();
+      for (const p of w) for (const k of MS_KG) {
+        if (hit.has(k) || start - p.value < k - 1e-9) continue;
+        hit.add(k);
+        out.push({ id: 'kg' + k, date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg minder dan bij je eerste meting.` });
+      }
+      const g = state.settings.goalWeight;
+      if (g && g < start) {
+        const p = w.find((x) => x.value <= g + 0.05);
+        if (p) out.push({ id: 'goal' + g, date: p.date, icon: '🏆', title: 'Doel bereikt', text: `Je hebt je streefgewicht van ${fmt(g)} kg gehaald.` });
+      }
+    }
+    const wa = series('waist');
+    if (wa.length > 1) {
+      const hit = new Set();
+      for (const p of wa) for (const k of MS_WAIST) {
+        if (hit.has(k) || wa[0].value - p.value < k - 1e-9) continue;
+        hit.add(k);
+        out.push({ id: 'waist' + k, date: p.date, icon: '📏', title: `Taille −${k} cm`, text: `Je taille is ${k} cm smaller dan bij de start.` });
+      }
+    }
+    const entries = entriesAsc();
+    const firsts = {}, cur = {}, hit = new Set();
+    for (const e of entries) {
+      for (const m of TAPE) {
+        const v = e.values[m.key];
+        if (v == null) continue;
+        if (!(m.key in firsts)) firsts[m.key] = v;
+        cur[m.key] = v;
+      }
+      const keys = Object.keys(firsts);
+      if (keys.length < 2) continue;
+      const lost = keys.reduce((sum, k) => sum + firsts[k] - cur[k], 0);
+      for (const k of MS_TAPE) {
+        if (hit.has(k) || lost < k - 1e-9) continue;
+        hit.add(k);
+        out.push({ id: 'tape' + k, date: e.date, icon: '🎯', title: `−${k} cm omtrek`, text: `Al je omtrekken samen zijn ${k} cm kleiner dan bij de start.` });
+      }
+    }
+    for (const n of MS_COUNT) {
+      if (entries.length >= n) out.push({ id: 'n' + n, date: entries[n - 1].date, icon: '🗓️', title: `${n} metingen`, text: `Je hebt al ${n} keer gemeten. Volhouden loont.` });
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // Nieuwe mijlpalen als gezien markeren; alleen na een eigen meting volgt een felicitatie.
+  function syncMilestones(celebrate) {
+    const had = Array.isArray(state.settings.milestones);
+    const seen = new Set(had ? state.settings.milestones : []);
+    const all = milestones();
+    const fresh = all.filter((m) => !seen.has(m.id));
+    if (had && !fresh.length) return;
+    state.settings = { ...state.settings, milestones: [...seen, ...fresh.map((m) => m.id)] };
+    save();
+    if (celebrate && had && fresh.length) showCelebration(fresh);
+  }
+
+  function badgesHTML() {
+    const list = milestones().reverse();
+    if (!list.length) return '';
+    return `<h2 class="section-title">Mijlpalen · ${list.length}</h2>
+      <div class="badges">${list.map((b) => `<div class="badge" title="${esc(b.text)}">
+        <span class="badge__icon" aria-hidden="true">${b.icon}</span>
+        <span class="badge__title">${esc(b.title)}</span>
+        <span class="badge__date">${fmtShort(b.date)}</span></div>`).join('')}</div>`;
+  }
+
+  const celebrateDlg = $('#celebrate');
+  function showCelebration(list) {
+    const main = list[list.length - 1];
+    $('#celebrateIcon').textContent = main.icon;
+    $('#celebrateTitle').textContent = main.title;
+    $('#celebrateText').textContent = main.text;
+    const more = list.slice(0, -1).map((m) => m.title);
+    $('#celebrateMore').textContent = more.length ? `En ook: ${more.join(', ')}` : '';
+    const box = $('#confetti');
+    box.innerHTML = '';
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      for (let i = 0; i < 70; i++) {
+        const c = document.createElement('i');
+        c.style.cssText = `--x:${Math.random() * 100}%;--d:${Math.random() * 0.5}s;--t:${1.6 + Math.random() * 1.4}s;--r:${Math.random() * 720 - 360}deg;--dx:${Math.random() * 80 - 40}px;--hh:${Math.round(Math.random() * 300)}`;
+        box.append(c);
+      }
+    }
+    celebrateDlg.showModal();
   }
 
   // Som van omtrekken die zowel in de eerste als laatste meting met die maat voorkomen.
@@ -405,6 +562,7 @@
         <div class="stat"><span class="stat__label">${perWeek != null ? 'Per week' : 'Omtrek'}</span><span class="stat__value">${perWeek != null ? deltaHTML(M.weight, perWeek, 2) : tapeCount ? deltaHTML({ dir: -1, unit: 'cm' }, tapeDelta) : '—'}</span></div>
       </div>
       ${perWeek != null && tapeCount ? `<div class="stat"><span class="stat__label">Totale omtrek (${plural(tapeCount, 'maat', 'maten')})</span><span class="stat__value">${deltaHTML({ dir: -1, unit: 'cm' }, tapeDelta)}</span></div>` : ''}
+      ${bodyHTML(A, B)}
       <div class="card">
         <table class="table">
           <thead><tr><th scope="col">Maat</th><th scope="col">${fmtShort(A)}</th><th scope="col">${fmtShort(B)}</th><th scope="col">Verschil</th></tr></thead>
@@ -412,6 +570,72 @@
         </table>
       </div>
       <p class="hint">Een kleine datum onder een waarde betekent dat die maat op die dag niet gemeten is; dan staat de meest recente meting ervoor.</p>`;
+  }
+
+  /* ---------------- Lichaamsschets ---------------- */
+  // Per maat: hoogte (y), breedte van de meetband (x1–x2) en de kant van het label. Links = L (zoals in de spiegel).
+  const BODY = {
+    neck:      { y: 76,  x1: 160, x2: 180, side: 'R' },
+    shoulders: { y: 98,  x1: 100, x2: 240, side: 'L' },
+    chest:     { y: 140, x1: 122, x2: 218, side: 'R' },
+    waist:     { y: 205, x1: 133, x2: 207, side: 'L' },
+    belly:     { y: 228, x1: 130, x2: 212, side: 'R' },
+    hips:      { y: 252, x1: 120, x2: 220, side: 'L' },
+    armL:      { y: 148, x1: 98,  x2: 122, side: 'L' },
+    armR:      { y: 148, x1: 218, x2: 242, side: 'R' },
+    forearmL:  { y: 228, x1: 90,  x2: 110, side: 'L' },
+    forearmR:  { y: 228, x1: 230, x2: 250, side: 'R' },
+    thighL:    { y: 300, x1: 121, x2: 165, side: 'L' },
+    thighR:    { y: 300, x1: 175, x2: 219, side: 'R' },
+    calfL:     { y: 380, x1: 128, x2: 158, side: 'L' },
+    calfR:     { y: 380, x1: 182, x2: 212, side: 'R' },
+  };
+  const FIGURE = `<g class="body__figure">
+    <ellipse cx="170" cy="40" rx="22" ry="26"/>
+    <rect x="160" y="60" width="20" height="26" rx="6"/>
+    <path d="M118 92C140 84 200 84 222 92C232 96 232 110 224 128C222 160 218 180 208 205C214 225 222 245 220 268L120 268C118 245 126 225 132 205C122 180 118 160 116 128C108 110 108 96 118 92Z"/>
+    <path class="body__limb" stroke-width="24" d="M224 104L236 190"/><path class="body__limb" stroke-width="19" d="M236 190L244 272"/>
+    <path class="body__limb" stroke-width="24" d="M116 104L104 190"/><path class="body__limb" stroke-width="19" d="M104 190L96 272"/>
+    <path class="body__limb" stroke-width="44" d="M194 262L198 345"/><path class="body__limb" stroke-width="30" d="M198 345L196 410"/>
+    <path class="body__limb" stroke-width="44" d="M146 262L142 345"/><path class="body__limb" stroke-width="30" d="M142 345L144 410"/>
+  </g>`;
+
+  function bodyHTML(A, B) {
+    const items = [];
+    for (const m of TAPE) {
+      const a = valueAt(m.key, A), b = valueAt(m.key, B);
+      if (!a || !b || !BODY[m.key]) continue;
+      items.push({ m, d: b.value - a.value, ...BODY[m.key] });
+    }
+    if (items.length < 2) return '';
+    const W = 340, H = 432, GAP = 31, TOP = 14, BOTTOM = H - 18;
+    let svg = '';
+    for (const side of ['L', 'R']) {
+      const list = items.filter((i) => i.side === side).sort((a, b) => a.y - b.y);
+      // Labels uit elkaar duwen, daarna terug omhoog als ze onderaan uit beeld vallen.
+      list.forEach((it, i) => { it.ly = Math.max(it.y, TOP, i ? list[i - 1].ly + GAP : TOP); });
+      for (let i = list.length - 1; i >= 0; i--) {
+        const max = i === list.length - 1 ? BOTTOM : list[i + 1].ly - GAP;
+        if (list[i].ly > max) list[i].ly = max;
+      }
+      for (const it of list) {
+        const t = trend(it.m, it.d);
+        const left = side === 'L';
+        const sx = left ? it.x1 : it.x2;
+        const lx = left ? 78 : 262;
+        svg += `<g class="delta--${t}">
+          <path class="body__leader" d="M${sx} ${it.y}L${left ? sx - 6 : sx + 6} ${it.y}L${lx} ${it.ly}"/>
+          <line class="body__band" x1="${it.x1}" x2="${it.x2}" y1="${it.y}" y2="${it.y}"/>
+          <text class="body__name" x="${left ? lx - 4 : lx + 4}" y="${it.ly - 3}" text-anchor="${left ? 'end' : 'start'}">${esc(it.m.label)}</text>
+          <text class="body__delta" x="${left ? lx - 4 : lx + 4}" y="${it.ly + 12}" text-anchor="${left ? 'end' : 'start'}">${fmtSigned(it.d)} cm</text>
+        </g>`;
+      }
+    }
+    return `<div class="card">
+      <h2 class="card__title">Per meetplek</h2>
+      <p class="hint" style="margin:4px 0 6px">Groen is de goede richting, rood de andere. Links en rechts zoals in de spiegel.</p>
+      <svg class="body" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lichaamsschets met het verschil per meetplek">${FIGURE}${svg}</svg>
+    </div>`;
   }
 
   /* ---------------- Thema ---------------- */
@@ -498,6 +722,7 @@
         <div class="button-row">
           <button class="button" data-action="export">Exporteer</button>
           <button class="button" data-action="import">Importeer</button>
+          ${photos.length ? `<button class="button button-row__wide" data-action="export-photos">Exporteer met foto's (${photos.length})</button>` : ''}
         </div>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
@@ -513,7 +738,256 @@
       </div>`;
   }
 
-  const RENDER = { overview: renderOverview, compare: renderCompare, settings: renderSettings };
+  /* ---------------- Foto's (IndexedDB, alleen op dit toestel) ---------------- */
+  const POSES = [{ key: 'front', label: 'Voor' }, { key: 'side', label: 'Zij' }, { key: 'back', label: 'Achter' }];
+  const poseLabel = (k) => POSES.find((p) => p.key === k)?.label || k;
+
+  const PhotoDB = (() => {
+    let dbp = null;
+    const open = () => (dbp ||= new Promise((res, rej) => {
+      const r = indexedDB.open('vorm-photos', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('photos', { keyPath: 'id' });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => { dbp = null; rej(r.error); };
+    }));
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction('photos', mode);
+        const req = fn(tx.objectStore('photos'));
+        tx.oncomplete = () => res(req && req.result);
+        tx.onerror = () => rej(tx.error);
+        tx.onabort = () => rej(tx.error);
+      });
+    };
+    return {
+      all: () => run('readonly', (s) => s.getAll()),
+      put: (p) => run('readwrite', (s) => s.put(p)),
+      del: (id) => run('readwrite', (s) => s.delete(id)),
+      clear: () => run('readwrite', (s) => s.clear()),
+    };
+  })();
+
+  let photos = [];
+  let photosLoaded = false;
+  const photoUrls = new Map();
+  const photoUrl = (p) => {
+    if (!photoUrls.has(p.id)) photoUrls.set(p.id, URL.createObjectURL(p.blob));
+    return photoUrls.get(p.id);
+  };
+  const dropUrl = (id) => { if (photoUrls.has(id)) { URL.revokeObjectURL(photoUrls.get(id)); photoUrls.delete(id); } };
+  const photoDates = (pose) => [...new Set(photos.filter((p) => !pose || p.pose === pose).map((p) => p.date))].sort();
+  const photoOf = (date, pose) => photos.find((p) => p.date === date && p.pose === pose);
+
+  async function loadPhotos() {
+    try { photos = (await PhotoDB.all()) || []; } catch { photos = []; }
+    photosLoaded = true;
+    if (ui.view === 'photos' || ui.view === 'settings') render();
+  }
+
+  // Verkleinen naar max. 1280 px JPEG: scherp genoeg om te vergelijken, klein genoeg voor honderden foto's.
+  async function compressImage(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const s = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * s), h = Math.round(img.naturalHeight * s);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+      if (!blob) throw new Error('encode');
+      return { blob, w, h };
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  function renderPhotos() {
+    const el = viewEl('photos');
+    if (!photosLoaded) { el.innerHTML = '<p class="hint" style="text-align:center">Foto\'s laden…</p>'; return; }
+    if (!photos.length) {
+      el.innerHTML = emptyState('Progressiefoto\'s', 'Neem foto\'s van voren, opzij en van achteren, telkens op dezelfde plek en met hetzelfde licht. Ze blijven alleen op dit toestel.', 'add-photos', 'Eerste foto\'s toevoegen');
+      return;
+    }
+    if (!photoDates(ui.photoPose).length) ui.photoPose = POSES.find((p) => photoDates(p.key).length).key;
+    const pose = ui.photoPose;
+    const dates = photoDates(pose);
+    if (!dates.includes(ui.photoA)) ui.photoA = dates[0];
+    if (!dates.includes(ui.photoB)) ui.photoB = dates[dates.length - 1];
+    const A = ui.photoA, B = ui.photoB;
+    const a = photoOf(A, pose), b = photoOf(B, pose);
+    const opts = (sel) => [...dates].reverse().map((d) => `<option value="${d}" ${d === sel ? 'selected' : ''}>${fmtDate(d)}</option>`).join('');
+    const alt = (d) => `${poseLabel(pose)}foto van ${fmtDate(d)}`;
+
+    let cmp;
+    if (dates.length < 2) {
+      cmp = `<figure class="photo-single"><img src="${photoUrl(b)}" alt="${alt(B)}"><figcaption>${fmtDate(B)}</figcaption></figure>
+        <p class="hint" style="margin:12px 0 0">Voeg op een andere datum ook een ${poseLabel(pose).toLowerCase()}foto toe om te vergelijken.</p>`;
+    } else if (ui.photoMode === 'side') {
+      cmp = `<div class="photo-pair">
+        <figure><img src="${photoUrl(a)}" alt="${alt(A)}"><figcaption>${fmtShort(A)}</figcaption></figure>
+        <figure><img src="${photoUrl(b)}" alt="${alt(B)}"><figcaption>${fmtShort(B)}</figcaption></figure>
+      </div>`;
+    } else {
+      cmp = `<div class="photo-slider" role="slider" tabindex="0" aria-label="Schuif tussen ${fmtShort(A)} en ${fmtShort(B)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="--pos:50%">
+        <img src="${photoUrl(b)}" alt="${alt(B)}" draggable="false">
+        <img class="photo-slider__top" src="${photoUrl(a)}" alt="${alt(A)}" draggable="false">
+        <span class="photo-slider__handle" aria-hidden="true"></span>
+        <span class="photo-slider__tag">${fmtShort(A)}</span><span class="photo-slider__tag photo-slider__tag--b">${fmtShort(B)}</span>
+      </div>`;
+    }
+
+    const days = photoDates().reverse();
+    el.innerHTML = `
+      <div class="card">
+        <div class="card__head">
+          <div class="segmented" role="group" aria-label="Houding">
+            ${POSES.map((p) => `<button type="button" data-pose="${p.key}" aria-pressed="${p.key === pose}" ${photoDates(p.key).length ? '' : 'disabled'}>${p.label}</button>`).join('')}
+          </div>
+          ${dates.length > 1 ? `<div class="segmented" role="group" aria-label="Weergave">
+            <button type="button" data-photo-mode="slider" aria-pressed="${ui.photoMode !== 'side'}">Schuif</button>
+            <button type="button" data-photo-mode="side" aria-pressed="${ui.photoMode === 'side'}">Naast elkaar</button>
+          </div>` : ''}
+        </div>
+        ${dates.length > 1 ? `<div class="compare-pick" style="margin-bottom:14px">
+          <label class="field"><span class="field__label">Van</span><select class="select" id="photoA">${opts(A)}</select></label>
+          <span class="compare-pick__arrow" aria-hidden="true">→</span>
+          <label class="field"><span class="field__label">Tot</span><select class="select" id="photoB">${opts(B)}</select></label>
+        </div>` : ''}
+        ${cmp}
+      </div>
+      <h2 class="section-title">Alle foto's · ${photos.length}</h2>
+      ${days.map((d) => `<div class="card photo-day">
+        <div class="photo-day__head"><span>${fmtDate(d)}</span><button type="button" class="inline-link" data-add-photos="${d}">Aanpassen</button></div>
+        <div class="photo-day__grid">${POSES.map((p) => {
+          const ph = photoOf(d, p.key);
+          return ph
+            ? `<button type="button" class="thumb" data-photo="${ph.id}"><img src="${photoUrl(ph)}" alt="${p.label}foto van ${fmtDate(d)}" loading="lazy"><span>${p.label}</span></button>`
+            : `<button type="button" class="thumb thumb--empty" data-add-photos="${d}"><span>+ ${p.label}</span></button>`;
+        }).join('')}</div>
+      </div>`).join('')}
+      <p class="hint" style="text-align:center">Foto's staan alleen op dit toestel. Neem ze mee in je back-up via Instellingen.</p>`;
+  }
+
+  // Foto's toevoegen
+  const photoSheet = $('#photoSheet');
+  const photoForm = $('#photoForm');
+  let pending = {};
+  const pendingUrls = [];
+  function renderSlots() {
+    const date = photoForm.date.value;
+    $('#poseSlots').innerHTML = POSES.map((p) => {
+      const file = pending[p.key];
+      let src = '';
+      if (file) { src = URL.createObjectURL(file); pendingUrls.push(src); }
+      else { const ex = photoOf(date, p.key); if (ex) src = photoUrl(ex); }
+      return `<label class="pose-slot${src ? ' has-img' : ''}">
+        <input class="sr" type="file" accept="image/*" data-slot="${p.key}">
+        <span class="pose-slot__img">${src ? `<img src="${src}" alt="">` : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+        <span class="pose-slot__label">${p.label}${src && !file ? ' · vervang' : ''}</span>
+      </label>`;
+    }).join('');
+  }
+  function openPhotoSheet(date = todayISO()) {
+    pending = {};
+    photoForm.date.value = date;
+    renderSlots();
+    photoSheet.showModal();
+  }
+  photoSheet.addEventListener('close', () => { pendingUrls.splice(0).forEach((u) => URL.revokeObjectURL(u)); pending = {}; });
+  photoForm.addEventListener('change', (ev) => {
+    const t = ev.target;
+    if (t.name === 'date') renderSlots();
+    else if (t.dataset.slot && t.files[0]) { pending[t.dataset.slot] = t.files[0]; renderSlots(); }
+  });
+  photoForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const date = photoForm.date.value;
+    if (!date) { photoForm.date.focus(); return; }
+    const poses = Object.keys(pending);
+    if (!poses.length) { toast('Kies minstens één foto'); return; }
+    const btn = photoForm.querySelector('[type="submit"]');
+    btn.disabled = true; btn.textContent = 'Bezig…';
+    try {
+      for (const pose of poses) {
+        const { blob, w, h } = await compressImage(pending[pose]);
+        const rec = { id: `${date}_${pose}`, date, pose, blob, w, h, t: Date.now() };
+        await PhotoDB.put(rec);
+        dropUrl(rec.id);
+        photos = photos.filter((p) => p.id !== rec.id).concat(rec);
+      }
+      ui.photoB = date;
+      toast(poses.length > 1 ? "Foto's bewaard" : 'Foto bewaard');
+      photoSheet.close();
+      render();
+    } catch {
+      toast('Bewaren mislukt: opslag vol of foto onleesbaar');
+    } finally { btn.disabled = false; btn.textContent = 'Bewaar'; }
+  });
+
+  // Foto bekijken / verwijderen
+  const viewer = $('#photoViewer');
+  let viewing = null;
+  function openViewer(id) {
+    viewing = photos.find((p) => p.id === id);
+    if (!viewing) return;
+    $('#viewerImg').src = photoUrl(viewing);
+    $('#viewerImg').alt = `${poseLabel(viewing.pose)}foto van ${fmtDate(viewing.date)}`;
+    $('#viewerCap').textContent = `${poseLabel(viewing.pose)} · ${fmtDate(viewing.date)}`;
+    viewer.showModal();
+  }
+  $('#viewerDelete').addEventListener('click', async () => {
+    if (!viewing || !confirm(`${poseLabel(viewing.pose)}foto van ${fmtDate(viewing.date)} verwijderen? Dit kan niet ongedaan worden.`)) return;
+    try {
+      await PhotoDB.del(viewing.id);
+      photos = photos.filter((p) => p !== viewing);
+      dropUrl(viewing.id);
+      viewer.close();
+      toast('Foto verwijderd');
+      render();
+    } catch { toast('Verwijderen mislukt'); }
+  });
+
+  // Schuifbalk: slepen of tikken, en pijltjestoetsen.
+  function setSlider(sl, pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    sl.style.setProperty('--pos', pct + '%');
+    sl.setAttribute('aria-valuenow', Math.round(pct));
+  }
+  document.addEventListener('pointerdown', (ev) => {
+    const sl = ev.target.closest('.photo-slider');
+    if (!sl) return;
+    const set = (e) => { const r = sl.getBoundingClientRect(); setSlider(sl, ((e.clientX - r.left) / r.width) * 100); };
+    set(ev);
+    sl.setPointerCapture(ev.pointerId);
+    const end = () => { sl.removeEventListener('pointermove', set); sl.removeEventListener('pointerup', end); sl.removeEventListener('pointercancel', end); };
+    sl.addEventListener('pointermove', set);
+    sl.addEventListener('pointerup', end);
+    sl.addEventListener('pointercancel', end);
+  });
+  document.addEventListener('keydown', (ev) => {
+    const sl = ev.target.closest?.('.photo-slider');
+    if (!sl || !['ArrowLeft', 'ArrowRight'].includes(ev.key)) return;
+    ev.preventDefault();
+    setSlider(sl, Number(sl.getAttribute('aria-valuenow')) + (ev.key === 'ArrowLeft' ? -5 : 5));
+  });
+
+  const b64ToBlob = (dataUrl) => {
+    const [head, body] = dataUrl.split(',');
+    const bin = atob(body);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg' });
+  };
+  const blobToB64 = (blob) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(blob);
+  });
+
+  const RENDER = { overview: renderOverview, compare: renderCompare, photos: renderPhotos, settings: renderSettings };
 
   function render() {
     if (!RENDER[ui.view]) ui.view = 'overview';
@@ -525,6 +999,7 @@
     document.title = ui.view === 'overview' ? 'Vorm' : `${TITLES[ui.view]} · Vorm`;
     const fab = $('#fab');
     fab.hidden = ui.view === 'settings' || ui.view === 'compare';
+    fab.setAttribute('aria-label', ui.view === 'photos' ? "Foto's toevoegen" : 'Nieuwe meting');
     RENDER[ui.view]();
     saveUi();
   }
@@ -546,17 +1021,28 @@
   function buildMeasureFields() {
     const groups = {};
     for (const m of METRICS) (groups[m.group] ||= []).push(m);
-    $('#measureFields').innerHTML = Object.entries(groups).map(([g, list]) => `
-      <fieldset class="fieldset"><legend>${g}</legend><div class="field-grid">
-        ${list.map((m) => `<label class="field"><span class="field__label">${m.label} <small>${m.unit}</small></span>
-          <input name="m_${m.key}" inputmode="decimal" autocomplete="off"></label>`).join('')}
+    $('#measureFields').innerHTML = Object.entries(groups).map(([g, list], gi) => `
+      <fieldset class="fieldset"><legend>${g}</legend>
+        ${g === 'Omtrek' ? '<p class="measure-tip">Meet altijd op hetzelfde moment (bv. \'s ochtends voor het ontbijt), op de blote huid, met het lint strak maar zonder in te snijden. Tik op <b>i</b> voor uitleg per maat.</p>' : ''}
+        <div class="field-grid${gi === 0 ? ' field-grid--one' : ''}">
+        ${list.map((m) => `<div class="field">
+          <div class="field__row">
+            <label class="field__label" for="m_${m.key}">${m.label} <small>${m.unit}</small></label>
+            <button type="button" class="info" data-tip="${m.key}" aria-expanded="false" aria-controls="tip_${m.key}" aria-label="Hoe meet ik ${m.label.toLowerCase()}?">i</button>
+          </div>
+          <input id="m_${m.key}" name="m_${m.key}" inputmode="decimal" autocomplete="off">
+          <p class="field__tip" id="tip_${m.key}" hidden>${esc(tipFor(m.key))}</p>
+        </div>`).join('')}
       </div></fieldset>`).join('');
   }
 
-  function openMeasure(entry = null) {
+  function openMeasure(entry = null, { quick = false } = {}) {
     editingEntry = entry;
     measureForm.reset();
-    $('#measureTitle').textContent = entry ? 'Meting bewerken' : 'Nieuwe meting';
+    measureSheet.classList.toggle('is-quick', quick);
+    for (const t of measureForm.querySelectorAll('.field__tip')) t.hidden = true;
+    for (const b of measureForm.querySelectorAll('.info')) b.setAttribute('aria-expanded', 'false');
+    $('#measureTitle').textContent = quick ? 'Snel wegen' : entry ? 'Meting bewerken' : 'Nieuwe meting';
     $('#measureDelete').hidden = !entry;
     measureForm.date.value = entry ? entry.date : todayISO();
     measureForm.note.value = entry ? entry.note || '' : '';
@@ -569,7 +1055,16 @@
       input.placeholder = prev ? fmt(prev.value) : '';
     }
     measureSheet.showModal();
+    if (quick) measureForm.m_weight.focus();
   }
+
+  measureForm.addEventListener('click', (ev) => {
+    const b = ev.target.closest('.info');
+    if (!b) return;
+    const tip = $('#tip_' + b.dataset.tip);
+    tip.hidden = !tip.hidden;
+    b.setAttribute('aria-expanded', String(!tip.hidden));
+  });
 
   measureForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
@@ -612,6 +1107,7 @@
     save();
     measureSheet.close();
     render();
+    syncMilestones(true);
   });
 
   $('#measureDelete').addEventListener('click', () => {
@@ -623,16 +1119,21 @@
     render();
   });
 
-  for (const dlg of [measureSheet]) {
+  for (const dlg of [measureSheet, photoSheet, viewer, celebrateDlg]) {
     dlg.addEventListener('click', (ev) => {
       if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close();
     });
   }
 
   /* ---------------- Backup ---------------- */
-  async function exportData() {
-    const json = JSON.stringify({ app: 'vorm', version: 1, exported: new Date().toISOString(), ...state }, null, 2);
-    const name = `vorm-backup-${todayISO()}.json`;
+  async function exportData(withPhotos = false) {
+    const payload = { app: 'vorm', version: 1, exported: new Date().toISOString(), ...state };
+    if (withPhotos) {
+      toast("Foto's inpakken…");
+      payload.photos = await Promise.all(photos.map(async (p) => ({ id: p.id, date: p.date, pose: p.pose, w: p.w, h: p.h, t: p.t, data: await blobToB64(p.blob) })));
+    }
+    const json = JSON.stringify(payload, null, withPhotos ? 0 : 2);
+    const name = `vorm-backup-${todayISO()}${withPhotos ? '-met-fotos' : ''}.json`;
     const file = new File([json], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: 'Vorm back-up' }); markExported(); return; }
@@ -652,13 +1153,26 @@
     try {
       const data = JSON.parse(await file.text());
       if (!data || !Array.isArray(data.entries)) throw new Error('format');
-      const next = normalize(data);
-      if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')} importeren? Dit vervangt je huidige gegevens.`)) return;
+      // Foto's gaan naar IndexedDB, nooit mee in de gewone opslag.
+      const { photos: incoming, ...rest } = data;
+      const pics = Array.isArray(incoming) ? incoming.filter((p) => p && p.id && p.date && p.pose && typeof p.data === 'string') : [];
+      const next = normalize(rest);
+      if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')}${pics.length ? ` en ${pics.length} foto's` : ''} importeren? Dit vervangt je huidige metingen${pics.length ? "; foto's worden toegevoegd" : ''}.`)) return;
       snapshot('restore');
       state = next;
       applyTheme();
       save();
-      toast('Back-up geïmporteerd');
+      syncMilestones(false);
+      let failed = 0;
+      for (const p of pics) {
+        try {
+          const rec = { id: p.id, date: p.date, pose: p.pose, w: p.w, h: p.h, t: p.t || Date.now(), blob: b64ToBlob(p.data) };
+          await PhotoDB.put(rec);
+          dropUrl(rec.id);
+          photos = photos.filter((x) => x.id !== rec.id).concat(rec);
+        } catch { failed++; }
+      }
+      toast(failed ? `Geïmporteerd, maar ${failed} foto's mislukt` : 'Back-up geïmporteerd');
       render();
     } catch {
       toast('Dit is geen geldig Vorm-back-upbestand');
@@ -703,19 +1217,29 @@
       const x = snapshots()[Number(t.dataset.restore)];
       if (!x || !confirm(`Gegevens van ${fmtDate(x.day)} terugzetten (${plural(x.count, 'meting', 'metingen')})? Je huidige stand wordt eerst zelf een herstelpunt.`)) return;
       snapshot('restore');
-      state = normalize(x.data); save({ allowEmpty: true }); applyTheme(); toast('Teruggezet'); return go('overview');
+      state = normalize(x.data); save({ allowEmpty: true }); applyTheme(); syncMilestones(false); toast('Teruggezet'); return go('overview');
     }
     if (t.dataset.editEntry) return openMeasure(state.entries.find((e) => e.id === t.dataset.editEntry));
+    if (t.dataset.pose) { ui.photoPose = t.dataset.pose; return render(); }
+    if (t.dataset.photoMode) { ui.photoMode = t.dataset.photoMode; return render(); }
+    if (t.dataset.addPhotos) return openPhotoSheet(t.dataset.addPhotos);
+    if (t.dataset.photo) return openViewer(t.dataset.photo);
     switch (t.dataset.action) {
       case 'add-measure': return openMeasure();
+      case 'add-photos': return openPhotoSheet();
       case 'export': return exportData();
+      case 'export-photos': return exportData(true);
       case 'import': return $('#importFile').click();
       case 'demo':
-        if (state.entries.length && !confirm('Demodata vervangt je huidige gegevens. Doorgaan?')) return;
-        snapshot('restore'); state = demoData(); save(); toast('Demodata geladen'); return go('overview');
-      case 'wipe':
-        if (!confirm('Alle metingen definitief wissen? Maak eerst een back-up als je twijfelt.')) return;
-        snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true }); toast('Alles gewist'); return render();
+        if (state.entries.length && !confirm('Demodata vervangt je huidige metingen. Doorgaan?')) return;
+        snapshot('restore'); state = demoData(); save(); syncMilestones(false); toast('Demodata geladen'); return go('overview');
+      case 'wipe': {
+        if (!confirm(`Alle metingen${photos.length ? " en foto's" : ''} definitief wissen? Maak eerst een back-up als je twijfelt.`)) return;
+        snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true });
+        PhotoDB.clear().catch(() => {});
+        photos.forEach((p) => dropUrl(p.id)); photos = [];
+        toast('Alles gewist'); return render();
+      }
     }
   });
 
@@ -724,6 +1248,8 @@
     if (t.id === 'metricSelect') { ui.metric = t.value; render(); }
     else if (t.id === 'cmpA') { ui.cmpA = t.value; render(); }
     else if (t.id === 'cmpB') { ui.cmpB = t.value; render(); }
+    else if (t.id === 'photoA') { ui.photoA = t.value; render(); }
+    else if (t.id === 'photoB') { ui.photoB = t.value; render(); }
     else if (t.id === 'importFile' && t.files[0]) { importData(t.files[0]); t.value = ''; }
   });
 
@@ -740,10 +1266,31 @@
     if (hBad || gBad) { toast('Controleer je lengte en streefgewicht'); return; }
     state.settings = { ...state.settings, height, goalWeight };
     save();
+    syncMilestones(false);
     toast('Profiel bewaard');
   });
 
-  $('#fab').addEventListener('click', () => openMeasure());
+  // + : tikken = volledige meting (of foto's op het fototabblad), ingedrukt houden = snel wegen.
+  const fab = $('#fab');
+  let pressTimer = null, longFired = false;
+  fab.addEventListener('pointerdown', () => {
+    longFired = false;
+    clearTimeout(pressTimer);
+    fab.classList.add('is-pressing');
+    pressTimer = setTimeout(() => { longFired = true; navigator.vibrate?.(12); }, 450);
+  });
+  const endPress = (open) => {
+    clearTimeout(pressTimer);
+    fab.classList.remove('is-pressing');
+    if (open && longFired) openMeasure(null, { quick: true });
+  };
+  fab.addEventListener('pointerup', () => endPress(true));
+  fab.addEventListener('pointercancel', () => { endPress(false); longFired = false; });
+  fab.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  fab.addEventListener('click', () => {
+    if (longFired) { longFired = false; return; }
+    if (ui.view === 'photos') openPhotoSheet(); else openMeasure();
+  });
 
   let toastTimer;
   function toast(msg) {
@@ -770,7 +1317,10 @@
   /* ---------------- Start ---------------- */
   buildMeasureFields();
   applyTheme();
+  // Eerste keer met mijlpalen: wat al behaald was, stil markeren (geen felicitatie-regen).
+  if (!Array.isArray(state.settings.milestones) && state.entries.length) syncMilestones(false);
   render();
+  loadPhotos();
 
   // Vraag iOS de opslag niet automatisch op te ruimen.
   navigator.storage?.persist?.().catch(() => {});
