@@ -1293,6 +1293,7 @@ window.GainlyGym = function (core) {
   const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
   const PLATE_COLOR = { 25: '#C8463D', 20: '#3C6FB4', 15: '#D9B43C', 10: '#3E8A55', 5: '#E8E4DC', 2.5: '#2B2826', 1.25: '#A39B92' };
   const BAR_OPTS = [20, 15, 10, 0];
+  const SLED_OPTS = [0, 10, 15, 20, 50, 75];
   // Plate-loaded machines (you put plates on them): calculator too, without a bar by default.
   const PLATE_MACHINE = /leg press|hack squat|t ?-?bar row|iso-lateral|lever|leverage|pendulum|belt squat|calf press|hip thrust \(machine\)|landmine|plate.loaded|v squat|power squat/i;
   const isPlateMachine = (ex) => PLATE_MACHINE.test(ex.name);
@@ -1317,7 +1318,7 @@ window.GainlyGym = function (core) {
       <div class="plates__bar" aria-hidden="true"><span class="plates__sleeve"></span>${plates}<span class="plates__collar"></span><span class="plates__shaft"></span></div>
       <p class="plates__text">${!total ? 'Type a weight to see the plates.' : total < bar ? `Lighter than the ${isPlateMachine(ex) ? 'sled' : 'bar'} (${fmtKg(bar)} kg).` : list.length ? `<strong>Per side:</strong> ${counts.join(' + ')} kg` : `Just the ${isPlateMachine(ex) ? 'machine' : 'bar'}.`}
         ${rest > 0.001 ? `<span class="plates__rest">${fmtKg(Math.round(rest * 2 * 100) / 100)} kg can’t be loaded exactly</span>` : ''}</p>
-      <div class="plates__bars" role="group" aria-label="Bar weight"><span>${isPlateMachine(ex) ? 'Sled' : 'Bar'}</span>${BAR_OPTS.map((b) => `<button type="button" class="chip" data-g="bar" data-b="${b}" aria-pressed="${b === bar}">${b ? `${b} kg` : 'None'}</button>`).join('')}</div>
+      <div class="plates__bars" role="group" aria-label="Bar weight"><span>${isPlateMachine(ex) ? 'Sled' : 'Bar'}</span>${(isPlateMachine(ex) ? SLED_OPTS : BAR_OPTS).map((b) => `<button type="button" class="chip" data-g="bar" data-b="${b}" aria-pressed="${b === bar}">${b ? `${b} kg` : 'None'}</button>`).join('')}</div>
     </div>`;
   }
   function showPlates(input) {
