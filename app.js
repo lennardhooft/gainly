@@ -949,51 +949,91 @@
   const photoSheet = $('#photoSheet');
   const photoForm = $('#photoForm');
   let pending = {};
+  let editDate = null;          // set when editing an existing day: its photos move along when the date changes
+  let removed = new Set();      // poses marked for deletion while editing
   const pendingUrls = [];
+  const existingFor = (pose) => photoOf(editDate || photoForm.date.value, pose);
   function renderSlots() {
-    const date = photoForm.date.value;
     $('#poseSlots').innerHTML = POSES.map((p) => {
       const file = pending[p.key];
+      const ex = existingFor(p.key);
+      const gone = ex && removed.has(p.key) && !file;
       let src = '';
       if (file) { src = URL.createObjectURL(file); pendingUrls.push(src); }
-      else { const ex = photoOf(date, p.key); if (ex) src = photoUrl(ex); }
-      return `<label class="pose-slot${src ? ' has-img' : ''}">
+      else if (ex && !gone) src = photoUrl(ex);
+      return `<div class="pose-slot-wrap"><label class="pose-slot${src ? ' has-img' : ''}">
         <input class="sr" type="file" accept="image/*" data-slot="${p.key}">
         <span class="pose-slot__img">${src ? `<img src="${src}" alt="">` : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'}</span>
-        <span class="pose-slot__label">${p.label}${src && !file ? ' · replace' : ''}</span>
-      </label>`;
+        <span class="pose-slot__label">${p.label}${gone ? ' · removed' : src && !file ? ' · replace' : ''}</span>
+      </label>${ex ? (gone
+        ? `<button type="button" class="pose-slot__x is-undo" data-undo-slot="${p.key}" aria-label="Keep ${p.label} photo">Undo</button>`
+        : `<button type="button" class="pose-slot__x" data-remove-slot="${p.key}" aria-label="Remove ${p.label} photo">✕</button>`) : ''}</div>`;
     }).join('');
+    $('#photoDelDay').hidden = !editDate;
   }
-  function openPhotoSheet(date = todayISO()) {
-    pending = {};
+  function openPhotoSheet(date = todayISO(), { edit = false } = {}) {
+    pending = {}; removed = new Set();
+    editDate = edit && POSES.some((p) => photoOf(date, p.key)) ? date : null;
     photoForm.date.value = date;
+    $('#photoTitle').textContent = editDate ? 'Edit photos' : 'Add photos';
     renderSlots();
     photoSheet.showModal();
   }
-  photoSheet.addEventListener('close', () => { pendingUrls.splice(0).forEach((u) => URL.revokeObjectURL(u)); pending = {}; });
+  photoSheet.addEventListener('close', () => { pendingUrls.splice(0).forEach((u) => URL.revokeObjectURL(u)); pending = {}; removed = new Set(); editDate = null; });
   photoForm.addEventListener('change', (ev) => {
     const t = ev.target;
     if (t.name === 'date') renderSlots();
-    else if (t.dataset.slot && t.files[0]) { pending[t.dataset.slot] = t.files[0]; renderSlots(); }
+    else if (t.dataset.slot && t.files[0]) { pending[t.dataset.slot] = t.files[0]; removed.delete(t.dataset.slot); renderSlots(); }
+  });
+  photoForm.addEventListener('click', async (ev) => {
+    const rm = ev.target.closest('[data-remove-slot]'), un = ev.target.closest('[data-undo-slot]');
+    if (rm) { ev.preventDefault(); removed.add(rm.dataset.removeSlot); delete pending[rm.dataset.removeSlot]; return renderSlots(); }
+    if (un) { ev.preventDefault(); removed.delete(un.dataset.undoSlot); return renderSlots(); }
+    if (ev.target.closest('#photoDelDay')) {
+      ev.preventDefault();
+      const list = POSES.map((p) => photoOf(editDate, p.key)).filter(Boolean);
+      if (!list.length || !await ask(`Delete all ${list.length === 1 ? '' : list.length + ' '}photos from ${fmtDate(editDate)}? This can’t be undone.`, 'Delete')) return;
+      try {
+        for (const ph of list) { await PhotoDB.del(ph.id); dropUrl(ph.id); }
+        photos = photos.filter((p) => !list.includes(p));
+        photoSheet.close(); toast(list.length > 1 ? 'Photos deleted' : 'Photo deleted'); render();
+      } catch { toast('Delete failed'); }
+    }
   });
   photoForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const date = photoForm.date.value;
     if (!date) { photoForm.date.focus(); return; }
-    const poses = Object.keys(pending);
-    if (!poses.length) { toast('Pick at least one photo'); return; }
+    const moving = editDate && date !== editDate;
+    if (!Object.keys(pending).length && !removed.size && !moving) { toast(editDate ? 'Nothing changed' : 'Pick at least one photo'); return; }
+    // Moving to a date that already has photos of the same pose: ask once
+    if (moving) {
+      const clash = POSES.filter((p) => photoOf(editDate, p.key) && !removed.has(p.key) && photoOf(date, p.key));
+      if (clash.length && !await ask(`${fmtDate(date)} already has ${clash.map((p) => p.label.toLowerCase()).join(', ')} ${clash.length > 1 ? 'photos' : 'photo'}. Replace ${clash.length > 1 ? 'them' : 'it'}?`, 'Replace')) return;
+    }
     const btn = photoForm.querySelector('[type="submit"]');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      for (const pose of poses) {
-        const { blob, w, h } = await compressImage(pending[pose]);
-        const rec = { id: `${date}_${pose}`, date, pose, blob, w, h, t: Date.now() };
-        await PhotoDB.put(rec);
-        dropUrl(rec.id);
-        photos = photos.filter((p) => p.id !== rec.id).concat(rec);
+      for (const p of POSES) {
+        const pose = p.key, id = `${date}_${pose}`;
+        const old = editDate ? photoOf(editDate, pose) : null;
+        if (pending[pose]) {
+          const { blob, w, h } = await compressImage(pending[pose]);
+          const rec = { id, date, pose, blob, w, h, t: Date.now() };
+          await PhotoDB.put(rec); dropUrl(id);
+          photos = photos.filter((x) => x.id !== id).concat(rec);
+          if (old && old.id !== id) { await PhotoDB.del(old.id); dropUrl(old.id); photos = photos.filter((x) => x !== old); }
+        } else if (old && removed.has(pose)) {
+          await PhotoDB.del(old.id); dropUrl(old.id); photos = photos.filter((x) => x !== old);
+        } else if (old && moving) {
+          const rec = { ...old, id, date };
+          await PhotoDB.put(rec); await PhotoDB.del(old.id);
+          dropUrl(old.id); dropUrl(id);
+          photos = photos.filter((x) => x !== old && x.id !== id).concat(rec);
+        }
       }
       ui.photoB = date;
-      toast(poses.length > 1 ? 'Photos saved' : 'Photo saved');
+      toast(moving ? `Moved to ${fmtDate(date)}` : 'Photos saved');
       photoSheet.close();
       render();
     } catch {
@@ -1320,7 +1360,7 @@
     if (t.dataset.editEntry) return openMeasure(state.entries.find((e) => e.id === t.dataset.editEntry));
     if (t.dataset.pose) { ui.photoPose = t.dataset.pose; return render(); }
     if (t.dataset.photoMode) { ui.photoMode = t.dataset.photoMode; return render(); }
-    if (t.dataset.addPhotos) return openPhotoSheet(t.dataset.addPhotos);
+    if (t.dataset.addPhotos) return openPhotoSheet(t.dataset.addPhotos, { edit: true });
     if (t.dataset.photo) return openViewer(t.dataset.photo);
     switch (t.dataset.action) {
       case 'add-measure': return openMeasure();
