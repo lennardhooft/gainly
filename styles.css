@@ -922,6 +922,12 @@ body[data-group="gym"] .subnav[data-group="gym"] { display: grid; animation: sub
 .section-row .inline-link { text-decoration: none; font-size: 15px; }
 
 .routine { display: flex; gap: 12px; align-items: center; }
+.routine-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+.routine-list > * { min-width: 0; }
+.routine-list [data-sort] { position: relative; transition: transform 0.18s var(--ease-out); }
+.routine-list [data-sort].is-dragging { transition: none; z-index: 3; box-shadow: 0 14px 34px var(--shadow); outline: 1px solid var(--accent); }
+.routine-list.is-sorting { user-select: none; -webkit-user-select: none; }
+.routine .drag-handle { margin: -8px -4px -8px -10px; }
 .routine__main { flex: 1; min-width: 0; }
 .routine__name { font: 600 17px/1.25 var(--font); }
 .routine__sub { font-size: 14px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

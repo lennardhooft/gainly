@@ -547,10 +547,11 @@ window.GainlyGym = function (core) {
         <button type="button" class="button button--primary" data-g="start-empty">Start empty workout</button>
       </div>
       <div class="section-row"><h2 class="section-title">Routines · ${g.routines.length}</h2><button type="button" class="inline-link" data-g="new-routine">+ New routine</button></div>
-      ${g.routines.length ? g.routines.map((r) => {
+      ${g.routines.length ? `<div class="routine-list" id="routineCards">${g.routines.map((r) => {
         const ld = lastDone(r.id);
         const names = r.items.map((it) => exById(it.exId).name);
-        return `<div class="card routine">
+        return `<div class="card routine" data-sort>
+          ${GRIP_HTML}
           <div class="routine__main">
             <h3 class="routine__name">${esc(r.name)}</h3>
             <p class="routine__sub">${esc(names.slice(0, 4).join(', '))}${names.length > 4 ? ` +${names.length - 4}` : ''}</p>
@@ -561,7 +562,7 @@ window.GainlyGym = function (core) {
             <button type="button" class="inline-link" data-g="edit-routine" data-id="${r.id}">Edit</button>
           </div>
         </div>`;
-      }).join('') : '<div class="card"><p class="prose">Create a routine for your regular workouts, like Push, Pull and Legs. Then you start them with one tap, with your previous weights alongside.</p></div>'}
+      }).join('')}</div>` : '<div class="card"><p class="prose">Create a routine for your regular workouts, like Push, Pull and Legs. Then you start them with one tap, with your previous weights alongside.</p></div>'}
       <div class="card">
         <h2 class="card__title" style="margin-bottom:6px">Coming from Hevy?</h2>
         <p class="prose" style="margin-bottom:12px">Import your workouts (CSV export from Hevy) and your routines (JSON from the Hevy API, Pro). Duplicates are skipped or updated.</p>
@@ -577,6 +578,8 @@ window.GainlyGym = function (core) {
   function renderGym() {
     const el = viewEl('gym');
     if (G().active) renderActive(el); else renderStart(el);
+    const cards = $('#routineCards');
+    if (cards) makeSortable(cards, (from, to) => { moveItem(G().routines, from, to); saveNow(); core.render(); });
   }
 
   /* ---------------- View: History ---------------- */
