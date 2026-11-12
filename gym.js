@@ -1142,6 +1142,12 @@ window.GainlyGym = function (core) {
         const i = g.routines.findIndex((x) => x.id === r.id);
         if (i >= 0) g.routines[i] = r; else g.routines.push(r);
       }
+      // Other routines from an earlier Hevy import that aren't in this file: offer to remove them.
+      const keep = new Set(routines.map((r) => r.id));
+      const others = g.routines.filter((r) => String(r.id).startsWith('hevy-') && !keep.has(r.id));
+      if (others.length && await core.ask(`Also remove the ${plural(others.length, 'other imported Hevy routine', 'other imported Hevy routines')} that aren’t in this file (${others.slice(0, 4).map((r) => r.name).join(', ')}${others.length > 4 ? ', …' : ''})?`, 'Remove')) {
+        g.routines = g.routines.filter((r) => !others.includes(r));
+      }
       saveNow();
       toast(`${plural(routines.length, 'routine', 'routines')} imported`);
       core.go('gym');
