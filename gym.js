@@ -664,6 +664,86 @@ window.GainlyGym = function (core) {
   }
 
   /* ---------------- View: History ---------------- */
+  /* Streak: consecutive weeks (Mon–Sun) with at least one workout. This week still counts as "in progress". */
+  function streaks(h) {
+    const weeks = new Set(h.map((w) => weekStart(dayOf(w.start))));
+    let wk = weekStart(todayISO());
+    if (!weeks.has(wk)) wk = addDays(wk, -7);
+    let cur = 0;
+    while (weeks.has(wk)) { cur++; wk = addDays(wk, -7); }
+    const sorted = [...weeks].sort();
+    let best = 0, run = 0, prev = null;
+    for (const w of sorted) { run = prev && addDays(prev, 7) === w ? run + 1 : 1; best = Math.max(best, run); prev = w; }
+    return { cur, best };
+  }
+
+  const histUi = { month: null, week: null };
+  const MF_LONG = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
+  function calendarHTML(h) {
+    const today = todayISO();
+    const month = histUi.month || today.slice(0, 7);
+    const first = month + '-01';
+    const byDay = new Map();
+    for (const w of h) { const d = dayOf(w.start); if (d.startsWith(month)) (byDay.get(d) || byDay.set(d, []).get(d)).push(w); }
+    const start = weekStart(first);
+    const nextMonth = toISO(new Date(+month.slice(0, 4), +month.slice(5, 7), 1));
+    const cells = [];
+    for (let d = start; d < nextMonth || cells.length % 7; d = addDays(d, 1)) cells.push(d);
+    const prevM = toISO(new Date(+month.slice(0, 4), +month.slice(5, 7) - 2, 1)).slice(0, 7);
+    const nextM = nextMonth.slice(0, 7);
+    const days = [...byDay.keys()].length;
+    return `<div class="card cal">
+      <div class="cal__head">
+        <button type="button" class="cal__nav" data-g="cal-month" data-m="${prevM}" aria-label="Previous month">‹</button>
+        <div class="cal__title">${MF_LONG.format(new Date(first + 'T12:00:00'))}<small>${plural(days, 'training day', 'training days')}</small></div>
+        <button type="button" class="cal__nav" data-g="cal-month" data-m="${nextM}" aria-label="Next month" ${nextM > today.slice(0, 7) ? 'disabled' : ''}>›</button>
+      </div>
+      <div class="cal__grid">
+        ${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span class="cal__dow">${x}</span>`).join('')}
+        ${cells.map((d) => {
+          const ws = byDay.get(d);
+          const out = !d.startsWith(month);
+          const cls = ['cal__day', out ? 'is-out' : '', ws ? 'has-wk' : '', d === today ? 'is-today' : ''].filter(Boolean).join(' ');
+          return ws && !out
+            ? `<button type="button" class="${cls}" data-g="open-workout" data-id="${ws[0].id}" aria-label="${esc(ws.map((w) => w.name).join(', '))}, ${fmtDate(d)}">${+d.slice(8)}${ws.length > 1 ? '<i></i>' : ''}</button>`
+            : `<span class="${cls}">${+d.slice(8)}</span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  /* Sets per muscle for one week (work sets only; an exercise counts for each of its primary muscles). */
+  function muscleWeekHTML(h) {
+    const thisWeek = weekStart(todayISO());
+    const wk = histUi.week || thisWeek;
+    const end = addDays(wk, 7);
+    const count = new Map();
+    let total = 0;
+    for (const w of h) {
+      const d = dayOf(w.start);
+      if (d < wk || d >= end) continue;
+      for (const it of w.items) {
+        const n = it.sets.filter(isWork).length;
+        if (!n) continue;
+        total += n;
+        for (const m of new Set(musclesOf(exById(it.exId)))) count.set(m, (count.get(m) || 0) + n);
+      }
+    }
+    const rows = MUSCLES.map(([k, l]) => [l, count.get(k) || 0]).filter(([, c]) => c).sort((a, b) => b[1] - a[1]);
+    const max = Math.max(1, ...rows.map(([, c]) => c));
+    const label = wk === thisWeek ? 'This week' : wk === addDays(thisWeek, -7) ? 'Last week' : `Week of ${fmtShort(wk)}`;
+    return `<div class="card musc">
+      <div class="cal__head">
+        <button type="button" class="cal__nav" data-g="musc-week" data-w="${addDays(wk, -7)}" aria-label="Previous week">‹</button>
+        <div class="cal__title">Sets per muscle<small>${label} · ${plural(total, 'set', 'sets')}</small></div>
+        <button type="button" class="cal__nav" data-g="musc-week" data-w="${addDays(wk, 7)}" aria-label="Next week" ${wk >= thisWeek ? 'disabled' : ''}>›</button>
+      </div>
+      ${rows.length ? `<div class="musc__rows">${rows.map(([l, c]) => `<div class="musc__row"><span class="musc__name">${l}</span><span class="musc__bar"><i style="width:${(c / max) * 100}%"></i></span><span class="musc__n">${c}</span></div>`).join('')}</div>`
+        : '<p class="hint" style="margin:6px 0 2px">No workouts this week.</p>'}
+      <p class="hint" style="margin:10px 0 0">Warm-up sets don’t count. Most lifters aim for about 10–20 sets per muscle per week.</p>
+    </div>`;
+  }
+
   function renderHistory() {
     const el = viewEl('gymHistory');
     const h = history();
@@ -679,18 +759,23 @@ window.GainlyGym = function (core) {
     const month = today.slice(0, 7);
     const byMonth = {};
     for (const w of h) (byMonth[dayOf(w.start).slice(0, 7)] ||= []).push(w);
-    const MF = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
+    const MF = MF_LONG;
+    const st = streaks(h);
+    void month;
     el.innerHTML = `
       <div class="card">
         <div class="stats">
+          <div class="stat"><span class="stat__label">Streak</span><span class="stat__value">🔥 ${plural(st.cur, 'week', 'weeks')}</span></div>
           <div class="stat"><span class="stat__label">This week</span><span class="stat__value">${counts[7]}</span></div>
-          <div class="stat"><span class="stat__label">This month</span><span class="stat__value">${(byMonth[month] || []).length}</span></div>
           <div class="stat"><span class="stat__label">Total</span><span class="stat__value">${h.length}</span></div>
         </div>
+        ${st.best > st.cur ? `<p class="hint" style="margin:8px 2px 0">Best streak: ${plural(st.best, 'week', 'weeks')} in a row.</p>` : st.cur > 1 ? '<p class="hint" style="margin:8px 2px 0">This is your best streak so far. 💪</p>' : ''}
         <div class="weekbars" role="img" aria-label="Workouts per week, last 8 weeks: ${counts.join(', ')}">
           ${counts.map((c, i) => `<div class="weekbars__col"><span class="weekbars__n">${c || ''}</span><span class="weekbars__bar${i === 7 ? ' is-now' : ''}" style="height:${Math.max(3, (c / max) * 64)}px"></span><span class="weekbars__lbl">${i === 7 ? 'now' : fmtShort(weeks[i])}</span></div>`).join('')}
         </div>
       </div>
+      ${calendarHTML(h)}
+      ${muscleWeekHTML(h)}
       ${Object.entries(byMonth).map(([m, list]) => `
         <h2 class="section-title">${MF.format(new Date(m + '-15T12:00:00'))} · ${list.length}</h2>
         <div class="list">${list.map((w) => `<button class="list__item" data-g="open-workout" data-id="${w.id}">
@@ -1440,6 +1525,8 @@ window.GainlyGym = function (core) {
       case 'rest-plus': if (a && a.restEnd) { a.restEnd += 15000; a.restTotal = (a.restTotal || 90) + 15; saveSoon(); tick(); } return;
       case 'rest-skip': return stopRest();
       case 'open-workout': return openWorkout(b.dataset.id);
+      case 'cal-month': histUi.month = b.dataset.m; return renderHistory();
+      case 'musc-week': histUi.week = b.dataset.w; return renderHistory();
       case 'redo': {
         const w = g.workouts.find((x) => x.id === wkOpen); if (!w) return;
         workoutSheet.close();

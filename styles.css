@@ -1065,6 +1065,26 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .weekbars__lbl { font-size: 10px; color: var(--faint); white-space: nowrap; }
 .pr-chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--text); vertical-align: 1px; }
 
+/* Calendar & sets per muscle */
+.cal__head { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; margin-bottom: 10px; }
+.cal__title { text-align: center; font-weight: 600; }
+.cal__title small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+.cal__nav { width: 40px; height: 40px; border: 0; border-radius: 10px; background: var(--surface-2); font-size: 22px; line-height: 1; color: var(--text); }
+.cal__nav:disabled { opacity: 0.3; }
+.cal__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal__dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--faint); padding-bottom: 2px; }
+.cal__day { position: relative; aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--muted); border: 0; background: none; padding: 0; }
+.cal__day.is-out { color: var(--faint); opacity: 0.4; }
+.cal__day.has-wk { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cal__day.is-today { box-shadow: inset 0 0 0 2px var(--accent); color: var(--text); }
+.cal__day.has-wk.is-today { box-shadow: inset 0 0 0 2px var(--text); }
+.cal__day i { position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.musc__rows { display: grid; gap: 8px; }
+.musc__row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 28px; align-items: center; gap: 10px; font-size: 14px; }
+.musc__bar { height: 10px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.musc__bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.musc__n { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
 /* Oefeningen */
 .search {
   width: 100%; min-height: 44px; padding: 0 14px;
