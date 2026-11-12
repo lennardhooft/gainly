@@ -1381,3 +1381,26 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .fav-type select { border: 0; background: none; color: var(--text); font: 600 15px var(--font); text-align: right; max-width: 60%; }
 .fav-chips { margin-top: 0; margin-bottom: 4px; }
 .fav-list { padding: 0 12px; }
+.check-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 12px; margin: 4px 0 12px; }
+.check-row input { width: 22px; height: 22px; flex: none; margin: 1px 0 0; accent-color: var(--accent); }
+.check-row span { display: grid; gap: 2px; font-size: 15px; }
+.check-row small { color: var(--muted); font-size: 13px; line-height: 1.35; }
+#offAccountForm .field { margin-bottom: 10px; }
+
+/* Day rating */
+.rate { --rc: var(--muted); border: 1px solid color-mix(in srgb, var(--rc) 40%, var(--border)); background: color-mix(in srgb, var(--rc) 8%, var(--surface)); border-radius: 14px; padding: 12px 14px; margin: 6px 0 4px; }
+.rate--good, .day-sum.rate--good { --rc: var(--good); }
+.rate--ok, .day-sum.rate--ok { --rc: #d9a441; }
+.rate--poor, .day-sum.rate--poor { --rc: var(--bad); }
+.rate__head { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.rate__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rc, var(--muted)); flex: none; display: inline-block; }
+.day-sum { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.rate__list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.rate__list li { display: flex; gap: 10px; align-items: flex-start; }
+.rate__list span { display: grid; gap: 1px; font-size: 14px; }
+.rate__list small { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.rate-i { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; }
+.rate-i.is-good { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+.rate-i.is-ok { background: color-mix(in srgb, #d9a441 22%, transparent); color: #d9a441; }
+.rate-i.is-poor { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+.rate-i.is-todo { background: var(--border); color: var(--muted); }

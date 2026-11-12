@@ -358,7 +358,7 @@ window.GainlyFood = function (core) {
           ${ring('Fat', tot.fat || 0, gg.fat, 'ring--f')}
         </div>
       </div>
-      <button type="button" class="button" data-f="summary">Day summary · all nutrients</button>
+      ${(() => { const r = rateDay(iso); return `<button type="button" class="button day-sum${r && r.level ? ' rate--' + r.level : ''}" data-f="summary">${r && r.level ? `<span class="rate__dot"></span>${r.live ? 'So far: ' : ''}${RATE_LABEL[r.level]} · ` : ''}Day summary</button>`; })()}
       ${MEALS.map(([k, l]) => mealHTML(k, l, d)).join('')}
       ${waterHTML(d)}
       <p class="hint" style="text-align:center">Food data: Open Food Facts (open database).</p>`;
@@ -366,6 +366,50 @@ window.GainlyFood = function (core) {
 
   /* ---------------- Sheet: day summary ---------------- */
   const summarySheet = $('#foodSummary');
+  /* ---------------- Day rating: good / average / poor ---------------- */
+  // Each check scores 2 (good), 1 (okay) or 0 (off). Today, before 20:00, things that still count up
+  // (calories, protein, water, fibre) aren't judged while they're below target: they show "to go".
+  function rateDay(iso) {
+    const d = peekDay(iso);
+    const entries = dayEntries(d);
+    if (!entries.length) return null;
+    const { n, known, count } = sumN(entries);
+    const gg = goalGrams(), g = F().goals;
+    const live = iso === todayISO() && new Date().getHours() < 20;
+    const has = (k) => n[k] != null && (known[k] || 0) >= Math.ceil(count * 0.6);
+    const checks = [];
+    const add = (label, detail, score, todo = false) => checks.push({ label, detail, score: todo ? null : score });
+    const kc = n.kcal || 0, rk = kc / Math.max(1, gg.kcal);
+    add('Calories', `${nfmt(kc, 'kcal')} of ${nfmt(gg.kcal, 'kcal')} kcal${live && rk < 0.9 ? ` · ${nfmt(gg.kcal - kc, 'kcal')} to go` : ''}`,
+      Math.abs(rk - 1) <= 0.1 ? 2 : Math.abs(rk - 1) <= 0.2 ? 1 : 0, live && rk < 0.9);
+    const rp = (n.protein || 0) / Math.max(1, gg.protein);
+    add('Protein', `${nfmt(n.protein || 0, 'g')} of ${Math.round(gg.protein)} g`, rp >= 0.9 ? 2 : rp >= 0.7 ? 1 : 0, live && rp < 0.9);
+    if (!live) {
+      const off = ['carbs', 'fat'].filter((k) => Math.abs((n[k] || 0) / Math.max(1, gg[k]) - 1) > 0.25);
+      add('Carbs & fat balance', off.length ? `${off.map((k) => `${NK[k].l.toLowerCase()} ${Math.round(((n[k] || 0) / Math.max(1, gg[k])) * 100)}%`).join(', ')} of goal` : 'Both close to your goal', 2 - off.length);
+    }
+    if (has('fiber')) add('Fibre', `${nfmt(n.fiber, 'g')} g · aim for 25+ g`, n.fiber >= 25 ? 2 : n.fiber >= 15 ? 1 : 0, live && n.fiber < 25);
+    if (has('sugars')) add('Sugars', `${nfmt(n.sugars, 'g')} g · max 90 g`, n.sugars <= 90 ? 2 : n.sugars <= 120 ? 1 : 0);
+    if (has('satfat')) add('Saturated fat', `${nfmt(n.satfat, 'g')} g · max 20 g`, n.satfat <= 20 ? 2 : n.satfat <= 26 ? 1 : 0);
+    if (has('salt')) add('Salt', `${nfmt(n.salt, 'g')} g · max 6 g`, n.salt <= 6 ? 2 : n.salt <= 8 ? 1 : 0);
+    const w = d?.water || 0, rw = w / Math.max(1, g.water);
+    add('Water', `${fmt(w / 1000, 2)} of ${fmt(g.water / 1000, 1)} L`, rw >= 1 ? 2 : rw >= 0.7 ? 1 : 0, live && rw < 1);
+    const judged = checks.filter((c) => c.score != null);
+    if (!judged.length) return { level: null, live, checks };
+    const pct = judged.reduce((a, c) => a + c.score, 0) / (judged.length * 2);
+    return { level: pct >= 0.75 ? 'good' : pct >= 0.5 ? 'ok' : 'poor', live, checks };
+  }
+  const RATE_LABEL = { good: 'Good day', ok: 'Average day', poor: 'Poor day' };
+  function rateHTML(r) {
+    if (!r) return '';
+    const icon = (c) => (c.score == null ? '<i class="rate-i is-todo">…</i>' : c.score === 2 ? '<i class="rate-i is-good">✓</i>' : c.score === 1 ? '<i class="rate-i is-ok">~</i>' : '<i class="rate-i is-poor">✕</i>');
+    return `<div class="rate rate--${r.level || 'none'}">
+      <div class="rate__head"><span class="rate__dot"></span><strong>${r.level ? (r.live ? 'So far: ' : '') + RATE_LABEL[r.level] : 'Too early to tell'}</strong></div>
+      <ul class="rate__list">${r.checks.map((c) => `<li>${icon(c)}<span><b>${c.label}</b><small>${c.detail}</small></span></li>`).join('')}</ul>
+      ${r.live ? '<p class="hint" style="margin:8px 0 0">The day isn’t over yet: what still counts up (calories, protein, water) is judged from 20:00.</p>' : ''}
+    </div>`;
+  }
+
   function openSummary() {
     const iso = curDay();
     const d = peekDay(iso);
@@ -387,6 +431,7 @@ window.GainlyFood = function (core) {
     $('#foodSummaryBody').innerHTML = `
       <h2 class="rv-title">${esc(dayLabel(iso))}</h2>
       <p class="eyebrow" style="margin-bottom:8px">${fmtDate(iso)} · ${plural(count, 'food', 'foods')} · water ${fmt((d?.water || 0) / 1000, 2)} L</p>
+      ${rateHTML(rateDay(iso))}
       ${sec('Energy & macronutrients', 'main')}
       ${sec('Vitamins', 'vit')}
       ${sec('Minerals', 'min')}
@@ -527,6 +572,7 @@ window.GainlyFood = function (core) {
       <div class="fa-kcal"><strong id="faKcal">${Math.round(n.kcal || 0)}</strong> kcal</div>
       <div class="fa-macros" id="faMacros">${['protein', 'carbs', 'fat'].map((k) => `<div><span>${NK[k].l}</span><strong>${nfmt(n[k] || 0, 'g')} g</strong></div>`).join('')}</div>
       <div class="nut-table" id="faTable" style="margin-top:10px">${['sugars', 'fiber', 'satfat', 'salt'].map((k) => `<div class="nut-row is-compact"><span class="nut-row__name">${NK[k].sub ? NK[k].l.replace('of which ', '') : NK[k].l}</span><span class="nut-row__val">${n[k] != null ? nfmt(n[k], 'g') + ' g' : '—'}</span></div>`).join('')}</div>
+      ${canShare(p) ? `<button type="button" class="button" data-f="share-off" style="margin-top:12px;width:100%">Share on Open Food Facts</button>` : ''}
       <button type="button" class="button button--primary" data-f="save-entry" style="margin-top:16px">${fam.entryId ? 'Save' : 'Add to ' + MEALS.find(([k]) => k === fam.meal)[1]}</button>
       <div class="button-row" style="margin-top:10px">
         <button type="button" class="button" data-f="edit-product">Edit food values</button>
@@ -562,8 +608,54 @@ window.GainlyFood = function (core) {
   const productSheet = $('#foodProduct');
   let fp = null;
   const EDIT_KEYS = ['kcal', 'protein', 'carbs', 'sugars', 'fat', 'satfat', 'fiber', 'salt'];
+
+  /* ---------------- Share own foods on Open Food Facts ---------------- */
+  // The account lives in its own key on this device only: never in state, backups or exports.
+  const OFF_KEY = 'gainly:off';
+  const offAccount = () => { try { const a = JSON.parse(localStorage.getItem(OFF_KEY) || 'null'); return a && a.user && a.pass ? a : null; } catch { return null; } };
+  const validCode = (c) => /^\d{8,14}$/.test(String(c || ''));
+  const canShare = (p) => p && p.src === 'own' && validCode(p.code) && !p.offShared;
+  async function shareOFF(p) {
+    const acc = offAccount();
+    if (!acc) { toast('Add your Open Food Facts account under Goals first'); return false; }
+    if (!validCode(p.code)) { toast('This food needs a barcode to share it'); return false; }
+    if (!navigator.onLine) { toast('Sharing needs an internet connection'); return false; }
+    try {
+      // Never overwrite someone else's product
+      const ex = await fetch(`https://world.openfoodfacts.org/api/v2/product/${p.code}?fields=code,product_name`).then((r) => r.json()).catch(() => null);
+      if (ex && ex.status === 1) { toast('This barcode is already on Open Food Facts'); return false; }
+      const body = new URLSearchParams({
+        code: p.code, user_id: acc.user, password: acc.pass,
+        product_name: p.name, lc: 'nl', nutrition_data_per: '100g',
+        comment: 'Added with Gainly', app_name: 'Gainly',
+      });
+      if (p.brand) body.set('brands', p.brand);
+      if (p.serving) body.set('serving_size', `${p.serving} g`);
+      for (const k of EDIT_KEYS) {
+        if (p.n[k] == null) continue;
+        body.set(`nutriment_${NK[k].off}`, String(p.n[k]));
+        body.set(`nutriment_${NK[k].off}_unit`, NK[k].u);
+      }
+      const r = await fetch('https://world.openfoodfacts.org/cgi/product_jqm2.pl', { method: 'POST', body });
+      const d = await r.json().catch(() => ({}));
+      if (d.status === 1) {
+        const saved = F().products[p.id];
+        if (saved) saved.offShared = Date.now();
+        p.offShared = Date.now();
+        saveNow();
+        toast('Shared on Open Food Facts. Thanks!');
+        return true;
+      }
+      const why = String(d.status_verbose || '');
+      toast(/user|password|credential/i.test(why) ? 'Open Food Facts didn’t accept your username or password' : `Open Food Facts said: ${why || 'something went wrong'}`);
+    } catch {
+      toast('Couldn’t reach Open Food Facts. Try again later.');
+    }
+    return false;
+  }
   function openProduct(p, { code = '', afterSave = null } = {}) {
     fp = p ? { ...p, n: { ...p.n } } : { id: 'own:' + uid(), name: fa.q || '', brand: '', code, img: '', serving: null, n: {}, src: 'own' };
+    fp.share = !fp.offShared && !!offAccount() && validCode(fp.code);
     fp.afterSave = afterSave;
     $('#foodProductTitle').textContent = p ? 'Edit food' : 'New food';
     $('#foodProductBody').innerHTML = `
@@ -576,20 +668,25 @@ window.GainlyFood = function (core) {
       <div class="field-grid">
         ${EDIT_KEYS.map((k) => `<label class="field"><span class="field__label">${NK[k].sub ? NK[k].l.replace('of which ', '') : NK[k].l} <small>${NK[k].u}</small></span><input data-fin="n-${k}" inputmode="decimal" value="${fp.n[k] != null ? fmt(fp.n[k], fp.n[k] % 1 ? 1 : 0) : ''}" placeholder="0"></label>`).join('')}
       </div>
-      ${fp.code ? `<p class="hint">Barcode ${esc(fp.code)}</p>` : ''}
+      ${fp.src === 'own' ? `<label class="field"><span class="field__label">Barcode <small>optional, the number under the bars</small></span><input data-fin="p-code" inputmode="numeric" value="${esc(fp.code || '')}" placeholder="—" autocomplete="off"></label>
+      ${fp.offShared ? '<p class="hint">✓ Shared on Open Food Facts.</p>' : `<label class="check-row"><input type="checkbox" data-fin="p-share"${fp.share ? ' checked' : ''}><span><b>Share on Open Food Facts</b><small>${offAccount() ? 'Adds this food to the open database for everyone, if the barcode isn’t there yet.' : 'Add your Open Food Facts account under Nutrition › Goals to use this.'}</small></span></label>`}` : (fp.code ? `<p class="hint">Barcode ${esc(fp.code)}</p>` : '')}
       ${p && p.src === 'own' ? '<button type="button" class="button button--danger" data-f="del-product" style="margin-top:6px">Delete this food</button>' : ''}`;
     productSheet.showModal();
   }
   function saveProduct() {
     if (!fp.name.trim()) { toast('Give the food a name'); productSheet.querySelector('[data-fin="p-name"]').focus(); return; }
     if (fp.n.kcal == null) { toast('Enter the calories per 100 g'); productSheet.querySelector('[data-fin="n-kcal"]').focus(); return; }
-    const { afterSave, ...p } = fp;
+    if (fp.code && !validCode(fp.code)) { toast('A barcode has 8 to 14 digits'); productSheet.querySelector('[data-fin="p-code"]')?.focus(); return; }
+    if (fp.share && !offAccount()) { toast('Add your Open Food Facts account under Goals first'); return; }
+    if (fp.share && !fp.code) { toast('Add the barcode to share this food'); productSheet.querySelector('[data-fin="p-code"]')?.focus(); return; }
+    const { afterSave, share, ...p } = fp;
     p.name = p.name.trim();
     F().products[p.id] = p;
     resultCache.set(p.id, p);
     saveNow();
     productSheet.close();
     toast('Food saved');
+    if (share && canShare(p)) shareOFF(p).then(() => { if (amountSheet.open) renderAmount(); });
     if (afterSave) afterSave(p);
     else if (amountSheet.open) renderAmount();
     else if (addSheet.open) renderAdd();
@@ -700,6 +797,17 @@ window.GainlyFood = function (core) {
           <button type="button" data-f="water-cont" data-c="bottle" aria-pressed="${g.container === 'bottle'}">Bottle</button>
         </div>
       </div>
+      <div class="card">
+        <h2 class="card__title" style="margin-bottom:4px">Open Food Facts account</h2>
+        ${offAccount() ? `<p class="hint" style="margin:0 0 12px">Signed in as <b>${esc(offAccount().user)}</b>. Foods you create with a barcode can be shared on Open Food Facts.</p>
+          <button type="button" class="button" data-f="off-signout" style="width:100%">Remove account</button>`
+        : `<p class="hint" style="margin:0 0 12px">Optional. With a free account from openfoodfacts.org you can add foods you create (with a barcode) to the open database. It’s stored only on this iPhone, never in backups.</p>
+          <form id="offAccountForm" autocomplete="on">
+            <label class="field"><span class="field__label">Username</span><input name="user" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+            <label class="field"><span class="field__label">Password</span><input name="pass" type="password" autocomplete="current-password"></label>
+            <button type="submit" class="button" style="width:100%">Save account</button>
+          </form>`}
+      </div>
       <p class="hint" style="text-align:center">Changes are saved right away.</p>`;
   }
   function renderGoals() { viewEl('foodGoals').innerHTML = goalsHTML(); }
@@ -768,6 +876,8 @@ window.GainlyFood = function (core) {
       case 'set-g': fam.g = +b.dataset.g; return renderAmount();
       case 'set-meal': fam.meal = b.dataset.meal; return renderAmount();
       case 'save-entry': return saveEntry();
+      case 'share-off': { b.disabled = true; b.textContent = 'Sharing…'; await shareOFF(pendingProduct()); return renderAmount(); }
+      case 'off-signout': if (!await core.ask('Remove your Open Food Facts account from this iPhone?', 'Remove')) return; localStorage.removeItem(OFF_KEY); return renderGoals();
       case 'fav-toggle': { toggleFav(pendingProduct()); renderAmount(); return core.render(); }
       case 'fav-filter': fui.favCat = b.dataset.c; return core.render();
       case 'fav-open': { const p = productOf(b.dataset.pid); return openAmount({ product: p, meal: mealNow() }); }
@@ -802,6 +912,14 @@ window.GainlyFood = function (core) {
   });
 
   document.addEventListener('submit', (ev) => {
+    if (ev.target.id === 'offAccountForm') {
+      ev.preventDefault();
+      const user = ev.target.user.value.trim(), pass = ev.target.pass.value;
+      if (!user || !pass) { toast('Enter your username and password'); return; }
+      try { localStorage.setItem(OFF_KEY, JSON.stringify({ user, pass })); } catch { toast('Couldn’t save the account'); return; }
+      toast('Account saved');
+      return renderGoals();
+    }
     if (ev.target.id !== 'foodSearchForm') return;
     ev.preventDefault();
     ev.target.q.blur();
@@ -820,6 +938,8 @@ window.GainlyFood = function (core) {
     if (k.startsWith('p-') || k.startsWith('n-')) {
       if (k === 'p-name') fp.name = t.value;
       else if (k === 'p-brand') fp.brand = t.value;
+      else if (k === 'p-code') { fp.code = t.value.replace(/\D/g, ''); const c = productSheet.querySelector('[data-fin="p-share"]'); if (c && offAccount() && validCode(fp.code) && !c.dataset.touched) { c.checked = true; fp.share = true; } }
+      else if (k === 'p-share') { fp.share = t.checked; t.dataset.touched = '1'; }
       else if (k === 'p-serving') { const n = parseNum(t.value); fp.serving = n > 0 ? n : null; }
       else { const n = parseNum(t.value); if (!Number.isNaN(n)) { if (n == null) delete fp.n[k.slice(2)]; else fp.n[k.slice(2)] = n; } }
       return;
