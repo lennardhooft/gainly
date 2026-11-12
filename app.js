@@ -62,6 +62,16 @@
   };
   const tipFor = (key) => TIPS[key] || TIPS[key.replace(/[LR]$/, '')];
 
+  // Opening a sheet puts focus on its first button (Close/Cancel), which iOS draws as a blue square.
+  // Move focus to the dialog itself instead; keyboard users can still tab to the buttons.
+  const nativeShowModal = HTMLDialogElement.prototype.showModal;
+  HTMLDialogElement.prototype.showModal = function () {
+    nativeShowModal.call(this);
+    if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1');
+    const f = document.activeElement;
+    if (f && this.contains(f) && f.tagName === 'BUTTON') this.focus({ preventScroll: true });
+  };
+
   /* ---------------- Helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
   const nfCache = {};
