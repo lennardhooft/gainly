@@ -1293,8 +1293,11 @@ window.GainlyGym = function (core) {
   const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
   const PLATE_COLOR = { 25: '#C8463D', 20: '#3C6FB4', 15: '#D9B43C', 10: '#3E8A55', 5: '#E8E4DC', 2.5: '#2B2826', 1.25: '#A39B92' };
   const BAR_OPTS = [20, 15, 10, 0];
-  const plateEquip = (ex) => ['Barbell', 'EZ bar', 'Smith machine'].includes(equipOf(ex));
-  const defaultBar = (ex) => (equipOf(ex) === 'EZ bar' ? 10 : equipOf(ex) === 'Smith machine' ? 15 : 20);
+  // Plate-loaded machines (you put plates on them): calculator too, without a bar by default.
+  const PLATE_MACHINE = /leg press|hack squat|t ?-?bar row|iso-lateral|lever|leverage|pendulum|belt squat|calf press|hip thrust \(machine\)|landmine|plate.loaded|v squat|power squat/i;
+  const isPlateMachine = (ex) => PLATE_MACHINE.test(ex.name);
+  const plateEquip = (ex) => ['Barbell', 'EZ bar', 'Smith machine'].includes(equipOf(ex)) || isPlateMachine(ex);
+  const defaultBar = (ex) => (isPlateMachine(ex) ? 0 : equipOf(ex) === 'EZ bar' ? 10 : equipOf(ex) === 'Smith machine' ? 15 : 20);
   const barFor = (ex) => { const b = G().bars && G().bars[ex.id]; return b != null ? b : defaultBar(ex); };
   function platesFor(total, bar) {
     let side = (total - bar) / 2;
@@ -1312,9 +1315,9 @@ window.GainlyGym = function (core) {
     for (const p of PLATES) { const n = list.filter((x) => x === p).length; if (n) counts.push(n > 1 ? `${n}×${fmtKg(p)}` : fmtKg(p)); }
     return `<div class="plates" data-ex="${esc(ex.id)}">
       <div class="plates__bar" aria-hidden="true"><span class="plates__sleeve"></span>${plates}<span class="plates__collar"></span><span class="plates__shaft"></span></div>
-      <p class="plates__text">${!total ? 'Type a weight to see the plates.' : total < bar ? `Lighter than the bar (${fmtKg(bar)} kg).` : list.length ? `<strong>Per side:</strong> ${counts.join(' + ')} kg` : 'Just the bar.'}
+      <p class="plates__text">${!total ? 'Type a weight to see the plates.' : total < bar ? `Lighter than the ${isPlateMachine(ex) ? 'sled' : 'bar'} (${fmtKg(bar)} kg).` : list.length ? `<strong>Per side:</strong> ${counts.join(' + ')} kg` : `Just the ${isPlateMachine(ex) ? 'machine' : 'bar'}.`}
         ${rest > 0.001 ? `<span class="plates__rest">${fmtKg(Math.round(rest * 2 * 100) / 100)} kg can’t be loaded exactly</span>` : ''}</p>
-      <div class="plates__bars" role="group" aria-label="Bar weight"><span>Bar</span>${BAR_OPTS.map((b) => `<button type="button" class="chip" data-g="bar" data-b="${b}" aria-pressed="${b === bar}">${b ? `${b} kg` : 'None'}</button>`).join('')}</div>
+      <div class="plates__bars" role="group" aria-label="Bar weight"><span>${isPlateMachine(ex) ? 'Sled' : 'Bar'}</span>${BAR_OPTS.map((b) => `<button type="button" class="chip" data-g="bar" data-b="${b}" aria-pressed="${b === bar}">${b ? `${b} kg` : 'None'}</button>`).join('')}</div>
     </div>`;
   }
   function showPlates(input) {
