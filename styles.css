@@ -1071,8 +1071,10 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .ex-thumb span { font-weight: 700; color: var(--muted); background: var(--surface-2); width: 100%; height: 100%; display: grid; place-items: center; }
 .ex-card__head .ex-thumb { width: 38px; height: 38px; border-radius: 9px; }
 .pick .ex-thumb { width: 40px; height: 40px; }
-.ex-visual { position: relative; aspect-ratio: 4 / 3; border-radius: var(--radius-sm); overflow: hidden; background: #fff; margin-bottom: 14px; }
-.ex-visual img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ex-visual { position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); margin-bottom: 14px; }
+/* Eerste foto bepaalt de hoogte (geen witte balken), de tweede ligt erbovenop */
+.ex-visual img { display: block; width: 100%; height: auto; }
+.ex-visual .ex-visual__end { position: absolute; inset: 0; height: 100%; object-fit: cover; }
 .ex-visual__end { animation: ex-flip 2.4s steps(1) infinite; }
 @keyframes ex-flip { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
 .ex-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
