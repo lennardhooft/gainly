@@ -1431,6 +1431,11 @@
   // Andere tab/venster wijzigde de data
   window.addEventListener('storage', (ev) => { if (ev.key === STORE_KEY) { state = load(); render(); } });
 
+  /* ---------------- No zooming ---------------- */
+  // Pinch and double-tap zoom off (iOS ignores the viewport setting in some cases, so block the gestures too).
+  for (const t of ['gesturestart', 'gesturechange']) document.addEventListener(t, (ev) => ev.preventDefault(), { passive: false });
+  // Double-tap zoom is turned off with touch-action in styles.css (taps keep working at full speed).
+
   /* ---------------- Keyboard ---------------- */
   // While typing, hide the bottom bars (iOS sometimes floats fixed bars above the keyboard)
   // and expose the keyboard height as --kb so floating items can sit right above it.
