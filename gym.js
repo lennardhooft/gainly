@@ -239,7 +239,7 @@ window.GainlyGym = function (core) {
   const isDrawn = (ex) => !!ex.img && !!(dbInfo.get(ex.img) || {}).d;
   function imgUrl(ex, frame = 0) {
     if (!ex.img) return null;
-    if (isDrawn(ex)) return `drawings/${ex.img}/${frame}.svg`;
+    if (isDrawn(ex)) { const v = (dbInfo.get(ex.img) || {}).dv; return `drawings/${ex.img}/${frame}.svg${v ? `?v=${v}` : ''}`; }
     const info = dbInfo.get(ex.img);
     return CDN + ((info && info.im && info.im[frame]) || `${ex.img}/${frame}.jpg`);
   }
