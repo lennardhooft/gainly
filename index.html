@@ -21,6 +21,7 @@
   <link rel="preload" href="icons/logo.webp" as="image">
   <link rel="stylesheet" href="styles.css">
   <script src="gym.js" defer></script>
+  <script src="food.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -39,6 +40,8 @@
     <section class="view" data-view="compare" hidden></section>
     <section class="view" data-view="photos" hidden></section>
     <section class="view" data-view="food" hidden></section>
+    <section class="view" data-view="foodMeals" hidden></section>
+    <section class="view" data-view="foodGoals" hidden></section>
     <section class="view" data-view="gym" hidden></section>
     <section class="view" data-view="gymHistory" hidden></section>
     <section class="view" data-view="gymEx" hidden></section>
@@ -55,6 +58,12 @@
     <button type="button" class="subtab" data-tab="compare">Compare</button>
     <button type="button" class="subtab" data-tab="photos">Photos</button>
     <button type="button" class="subtab" data-tab="log">Log</button>
+  </nav>
+
+  <nav class="subnav" data-group="food" aria-label="Nutrition" style="--n:3">
+    <button type="button" class="subtab" data-tab="food">Diary</button>
+    <button type="button" class="subtab" data-tab="foodMeals">Meals</button>
+    <button type="button" class="subtab" data-tab="foodGoals">Goals</button>
   </nav>
 
   <nav class="subnav" data-group="gym" aria-label="Gym" style="--n:3">
@@ -84,7 +93,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.5" r="2.5"/><path d="M5 8.5c4 1.2 10 1.2 14 0M12 9.5V14M12 14l-3.5 7M12 14l3.5 7"/></svg>
       <span>Body</span>
     </button>
-    <button type="button" class="tab" data-tab="food">
+    <button type="button" class="tab" id="foodTab">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 11v10M17 21V3c-2.2 0-4 2.5-4 6v5h4"/></svg>
       <span>Nutrition</span>
     </button>
@@ -187,6 +196,49 @@
         <button type="button" class="link link--strong" id="reorderDone">Done</button>
       </header>
       <div class="sheet__body" id="reorderBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Voeding: samenvatting van de dag -->
+  <dialog class="sheet sheet--tall" id="foodSummary" aria-label="Day summary">
+    <div class="sheet__form">
+      <header class="sheet__head"><span></span><h2>Day summary</h2><button type="button" class="link link--strong" data-close>Close</button></header>
+      <div class="sheet__body" id="foodSummaryBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Voeding: eten toevoegen -->
+  <dialog class="sheet sheet--tall" id="foodAdd" aria-labelledby="foodAddTitle">
+    <div class="sheet__form">
+      <header class="sheet__head"><button type="button" class="link" data-close>Cancel</button><h2 id="foodAddTitle">Add food</h2><span></span></header>
+      <div class="sheet__body" id="foodAddBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Voeding: hoeveelheid -->
+  <dialog class="sheet" id="foodAmount" aria-labelledby="foodAmountTitle">
+    <div class="sheet__form">
+      <header class="sheet__head"><button type="button" class="link" data-close>Cancel</button><h2 id="foodAmountTitle">Add food</h2><span></span></header>
+      <div class="sheet__body" id="foodAmountBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Voeding: product maken / aanpassen -->
+  <dialog class="sheet sheet--tall" id="foodProduct" aria-labelledby="foodProductTitle">
+    <div class="sheet__form">
+      <header class="sheet__head"><button type="button" class="link" data-close>Cancel</button><h2 id="foodProductTitle">New food</h2><button type="button" class="link link--strong" id="foodProductSave">Save</button></header>
+      <div class="sheet__body" id="foodProductBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Voeding: barcode scannen -->
+  <dialog class="scan" id="scanSheet" aria-label="Scan barcode">
+    <div class="scan__top"><button type="button" class="link" data-close>Close</button><h2>Scan barcode</h2><span></span></div>
+    <div class="scan__view" id="scanView"></div>
+    <p class="scan__status" id="scanStatus">Starting camera…</p>
+    <div class="scan__manual">
+      <input id="scanCode" inputmode="numeric" placeholder="Or type the barcode number" aria-label="Barcode number">
+      <button type="button" class="button button--primary" id="scanFind">Find</button>
     </div>
   </dialog>
 

@@ -44,7 +44,8 @@
   // Categorieën in het menu: Lichaam heeft een tweede balk met zijn vier pagina's.
   const BODY_VIEWS = ['overview', 'compare', 'photos', 'log'];
   const GYM_VIEWS = ['gym', 'gymHistory', 'gymEx'];
-  const groupOf = (v) => (BODY_VIEWS.includes(v) ? 'body' : GYM_VIEWS.includes(v) ? 'gym' : '');
+  const FOOD_VIEWS = ['food', 'foodMeals', 'foodGoals'];
+  const groupOf = (v) => (BODY_VIEWS.includes(v) ? 'body' : GYM_VIEWS.includes(v) ? 'gym' : FOOD_VIEWS.includes(v) ? 'food' : '');
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).
   const TIPS = {
@@ -1067,9 +1068,8 @@
       viewEl(ui.view).innerHTML = `<div class="card empty"><span class="soon">Coming soon</span><h2>${title}</h2><p>${text}</p></div>`;
     };
   }
-  const renderFood = renderSoon('Calorie tracking', 'Your nutrition will live here: what you eat, your calories and protein per day.');
 
-  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, photos: renderPhotos, food: renderFood, settings: renderSettings };
+  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, photos: renderPhotos, settings: renderSettings };
 
   function render() {
     if (!RENDER[ui.view]) ui.view = 'overview';
@@ -1078,7 +1078,7 @@
     document.body.dataset.group = group;
     document.body.classList.toggle('has-subnav', !!group);
     for (const t of document.querySelectorAll('.tab, .subtab')) {
-      const on = t.dataset.tab ? t.dataset.tab === ui.view : (t.id === 'bodyTab' && group === 'body') || (t.id === 'gymTab' && group === 'gym');
+      const on = t.dataset.tab ? t.dataset.tab === ui.view : (t.id === 'bodyTab' && group === 'body') || (t.id === 'gymTab' && group === 'gym') || (t.id === 'foodTab' && group === 'food');
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     }
     $('#viewTitle').textContent = TITLES[ui.view];
@@ -1291,6 +1291,7 @@
     if (!t) return;
     if (t.id === 'bodyTab') return go(BODY_VIEWS.includes(ui.view) ? ui.view : 'overview');
     if (t.id === 'gymTab') return go(GYM_VIEWS.includes(ui.view) ? ui.view : 'gym');
+    if (t.id === 'foodTab') return go(FOOD_VIEWS.includes(ui.view) ? ui.view : 'food');
     if (t.dataset.tab) return go(t.dataset.tab);
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
     if (t.dataset.goalType) {
@@ -1468,6 +1469,15 @@
     });
     Object.assign(RENDER, gym.views);
     Object.assign(TITLES, gym.titles);
+  }
+  // Voeding-module (food.js)
+  if (window.GainlyFood) {
+    const food = window.GainlyFood({
+      get state() { return state; }, save, toast, render, go, ui, $, esc, fmt, fmtDate, fmtShort, toISO, todayISO, addDays,
+      parseNum, uid, plural, chev, viewEl, DF_WEEKDAY, ask,
+    });
+    Object.assign(RENDER, food.views);
+    Object.assign(TITLES, food.titles);
   }
 
   buildMeasureFields();
