@@ -18,10 +18,15 @@
       if (t.accent) document.documentElement.dataset.accent = t.accent;
       if (t.mode) document.documentElement.dataset.mode = t.mode; } catch (e) {}
   </script>
+  <link rel="preload" href="icons/logo.webp" as="image">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
 <body>
+  <!-- Opstartscherm: eerst de A, dan het hele woordmerk, daarna vervaagt het naar de app -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <img class="splash__logo" src="icons/logo.webp" alt="" width="2000" height="414">
+  </div>
   <header class="topbar">
     <h1 class="topbar__title" id="viewTitle">Overzicht</h1>
   </header>

@@ -872,6 +872,37 @@ body.has-subnav { --subnav-h: 52px; }
   text-transform: uppercase;
 }
 
+/* ---------- Opstartscherm ---------- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: #141312; /* altijd donker: het woordmerk is licht */
+  animation: splash-out 0.4s 1.35s var(--ease-out) forwards;
+}
+.splash__logo {
+  width: min(68vw, 300px);
+  height: auto;
+  /* Start met alleen de A (21%–39% van de breedte), dan openschuiven naar het hele woord */
+  clip-path: inset(-10% 60.6% -10% 21%);
+  opacity: 0;
+  animation: splash-logo 1.15s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes splash-logo {
+  /* De A staat eerst in het midden (+20% = verschil tussen A-midden en logo-midden) */
+  0%   { opacity: 0; translate: 20% 10px; scale: 0.94; clip-path: inset(-10% 60.6% -10% 21%); }
+  30%  { opacity: 1; translate: 20% 0; scale: 1; clip-path: inset(-10% 60.6% -10% 21%); }
+  45%  { translate: 20% 0; clip-path: inset(-10% 60.6% -10% 21%); }
+  100% { opacity: 1; translate: 0 0; scale: 1; clip-path: inset(-10% -2% -10% -2%); }
+}
+@keyframes splash-out { to { opacity: 0; visibility: hidden; scale: 1.03; } }
+@media (prefers-reduced-motion: reduce) {
+  .splash { animation: splash-out 0.2s 0.6s forwards !important; }
+  .splash__logo { animation: none !important; opacity: 1; clip-path: none; }
+}
+
 @media (max-width: 380px) {
   .hero__value { font-size: 48px; }
   .stat__value { font-size: 15px; }

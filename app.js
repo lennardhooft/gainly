@@ -1385,6 +1385,10 @@
   window.addEventListener('storage', (ev) => { if (ev.key === STORE_KEY) { state = load(); render(); } });
 
   /* ---------------- Start ---------------- */
+  // Opstartscherm weghalen zodra de uitfade-animatie klaar is (CSS verbergt het sowieso).
+  const splash = $('#splash');
+  splash?.addEventListener('animationend', (ev) => { if (ev.animationName === 'splash-out') splash.remove(); });
+
   buildMeasureFields();
   applyTheme();
   // Eerste keer met mijlpalen: wat al behaald was, stil markeren (geen felicitatie-regen).
