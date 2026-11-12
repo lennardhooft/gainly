@@ -43,6 +43,8 @@
   const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', photos: "Foto's", food: 'Voeding', gym: 'Gym', settings: 'Instellingen' };
   // Categorieën in het menu: Lichaam heeft een tweede balk met zijn vier pagina's.
   const BODY_VIEWS = ['overview', 'compare', 'photos', 'log'];
+  const GYM_VIEWS = ['gym', 'gymHistory', 'gymEx'];
+  const groupOf = (v) => (BODY_VIEWS.includes(v) ? 'body' : GYM_VIEWS.includes(v) ? 'gym' : '');
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).
   const TIPS = {
@@ -120,11 +122,17 @@
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
-      if (!data.entries || !data.entries.length) return;
-      const list = snapshots().filter((x) => x.day !== todayISO() || reason !== 'auto');
-      list.unshift({ day: todayISO(), at: new Date().toISOString(), reason, count: data.entries.length, data });
-      localStorage.setItem(SNAP_KEY, JSON.stringify(list.slice(0, 10)));
-    } catch { /* opslag vol: herstelpunt overslaan */ }
+      const workouts = (data.gym && data.gym.workouts && data.gym.workouts.length) || 0;
+      if (!(data.entries && data.entries.length) && !workouts) return;
+      let list = snapshots().filter((x) => x.day !== todayISO() || reason !== 'auto');
+      list.unshift({ day: todayISO(), at: new Date().toISOString(), reason, count: (data.entries || []).length, workouts, data });
+      list = list.slice(0, 10);
+      // Opslag vol? Oudste herstelpunten laten vallen tot het past.
+      while (list.length) {
+        try { localStorage.setItem(SNAP_KEY, JSON.stringify(list)); return; } catch { list.pop(); }
+      }
+      localStorage.removeItem(SNAP_KEY);
+    } catch { /* herstelpunt overslaan */ }
   }
 
   function save({ allowEmpty = false } = {}) {
@@ -135,7 +143,18 @@
         if (prev && prev.entries && prev.entries.length) { state = normalize(prev); toast('Opslaan geweigerd om gegevensverlies te voorkomen'); return; }
       }
       if (!snapshots().some((x) => x.day === todayISO())) snapshot('auto');
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      const json = JSON.stringify(state);
+      try { localStorage.setItem(STORE_KEY, json); }
+      catch {
+        // Je gegevens gaan voor: herstelpunten opofferen om plaats te maken.
+        const list = snapshots();
+        while (list.length) {
+          list.pop();
+          try { localStorage.setItem(SNAP_KEY, JSON.stringify(list)); localStorage.setItem(STORE_KEY, json); return; } catch { /* verder */ }
+        }
+        localStorage.removeItem(SNAP_KEY);
+        localStorage.setItem(STORE_KEY, json);
+      }
     } catch { toast('Opslaan mislukt: opslag vol of geblokkeerd'); }
   }
 
@@ -173,7 +192,6 @@
   const isBulk = () => state.settings.goalType === 'bulk';
   const BULK_DIR = { weight: 1, neck: 0, shoulders: 1, chest: 1, waist: -1, belly: 0, hips: 0, armL: 1, armR: 1, forearmL: 1, forearmR: 1, thighL: 1, thighR: 1, calfL: 1, calfR: 1 };
   const dirOf = (m) => (m.key && isBulk() ? BULK_DIR[m.key] ?? m.dir : m.dir);
-  const TAPE_TOTAL = () => ({ dir: isBulk() ? 0 : -1, unit: 'cm' });
 
   function trend(m, d) {
     if (d == null || Math.abs(d) < 0.05) return 'flat';
@@ -575,12 +593,10 @@
     const opts = (sel) => [...dates].reverse().map((d) => `<option value="${d}" ${d === sel ? 'selected' : ''}>${fmtDate(d)}</option>`).join('');
 
     const rows = [];
-    let tapeDelta = 0, tapeCount = 0;
     for (const m of METRICS) {
       const a = valueAt(m.key, A), b = valueAt(m.key, B);
       if (!a && !b) continue;
       const d = a && b ? b.value - a.value : null;
-      if (d != null && m.unit === 'cm') { tapeDelta += d; tapeCount++; }
       const cell = (v, at) => v ? `${fmt(v.value)}${v.date !== at ? `<span class="stale">${fmtShort(v.date)}</span>` : ''}` : '—';
       rows.push(`<tr><th scope="row">${m.label} <span class="unit">${m.unit}</span></th><td>${cell(a, A)}</td><td>${cell(b, B)}</td><td>${deltaHTML(m, d, 1, false)}</td></tr>`);
     }
@@ -600,9 +616,8 @@
       <div class="compare-head">
         <div class="stat"><span class="stat__label">Periode</span><span class="stat__value">${plural(Math.abs(days), 'dag', 'dagen')}</span></div>
         <div class="stat"><span class="stat__label">Gewicht</span><span class="stat__value">${wa && wb ? deltaHTML(M.weight, wb.value - wa.value) : '—'}</span></div>
-        <div class="stat"><span class="stat__label">${perWeek != null ? 'Per week' : 'Omtrek'}</span><span class="stat__value">${perWeek != null ? deltaHTML(M.weight, perWeek, 2) : tapeCount ? deltaHTML(TAPE_TOTAL(), tapeDelta) : '—'}</span></div>
+        <div class="stat"><span class="stat__label">Per week</span><span class="stat__value">${perWeek != null ? deltaHTML(M.weight, perWeek, 2) : '—'}</span></div>
       </div>
-      ${perWeek != null && tapeCount ? `<div class="stat"><span class="stat__label">Totale omtrek (${plural(tapeCount, 'maat', 'maten')})</span><span class="stat__value">${deltaHTML(TAPE_TOTAL(), tapeDelta)}</span></div>` : ''}
       ${bodyHTML(A, B)}
       <div class="card">
         <table class="table">
@@ -1043,16 +1058,17 @@
     };
   }
   const renderFood = renderSoon('Calorieën bijhouden', 'Hier komt je voeding: wat je eet, je calorieën en eiwitten per dag.');
-  const renderGym = renderSoon('Trainingen', 'Hier komen je trainingen: oefeningen, sets, gewichten en je records.');
 
-  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, photos: renderPhotos, food: renderFood, gym: renderGym, settings: renderSettings };
+  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, photos: renderPhotos, food: renderFood, settings: renderSettings };
 
   function render() {
     if (!RENDER[ui.view]) ui.view = 'overview';
     for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== ui.view;
-    document.body.classList.toggle('has-subnav', BODY_VIEWS.includes(ui.view));
+    const group = groupOf(ui.view);
+    document.body.dataset.group = group;
+    document.body.classList.toggle('has-subnav', !!group);
     for (const t of document.querySelectorAll('.tab, .subtab')) {
-      const on = t.dataset.tab ? t.dataset.tab === ui.view : t.id === 'bodyTab' && BODY_VIEWS.includes(ui.view);
+      const on = t.dataset.tab ? t.dataset.tab === ui.view : (t.id === 'bodyTab' && group === 'body') || (t.id === 'gymTab' && group === 'gym');
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     }
     $('#viewTitle').textContent = TITLES[ui.view];
@@ -1061,6 +1077,7 @@
     fab.hidden = !['overview', 'log', 'photos'].includes(ui.view);
     fab.setAttribute('aria-label', ui.view === 'photos' ? "Foto's toevoegen" : 'Nieuwe meting');
     RENDER[ui.view]();
+    gym?.afterRender?.();
     saveUi();
   }
 
@@ -1255,7 +1272,7 @@
       }
       entries.push({ id: uid(), date, values, note: '' });
     }
-    return { entries, settings: { ...state.settings, goalWeight: 82 } };
+    return { ...state, entries, settings: { ...state.settings, goalWeight: 82 } }; // trainingen blijven staan
   }
 
   /* ---------------- Events ---------------- */
@@ -1263,6 +1280,7 @@
     const t = ev.target.closest('button, [data-tab-go]');
     if (!t) return;
     if (t.id === 'bodyTab') return go(BODY_VIEWS.includes(ui.view) ? ui.view : 'overview');
+    if (t.id === 'gymTab') return go(GYM_VIEWS.includes(ui.view) ? ui.view : 'gym');
     if (t.dataset.tab) return go(t.dataset.tab);
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
     if (t.dataset.goalType) {
@@ -1303,8 +1321,8 @@
         if (state.entries.length && !confirm('Demodata vervangt je huidige metingen. Doorgaan?')) return;
         snapshot('restore'); state = demoData(); save(); syncMilestones(false); toast('Demodata geladen'); return go('overview');
       case 'wipe': {
-        if (!confirm(`Alle metingen${photos.length ? " en foto's" : ''} definitief wissen? Maak eerst een back-up als je twijfelt.`)) return;
-        snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true });
+        if (!confirm(`Alle metingen, trainingen${photos.length ? " en foto's" : ''} definitief wissen? Maak eerst een back-up als je twijfelt.`)) return;
+        snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true }); // ook trainingen
         PhotoDB.clear().catch(() => {});
         photos.forEach((p) => dropUrl(p.id)); photos = [];
         toast('Alles gewist'); return render();
@@ -1388,6 +1406,17 @@
   // Opstartscherm weghalen zodra de uitfade-animatie klaar is (CSS verbergt het sowieso).
   const splash = $('#splash');
   splash?.addEventListener('animationend', (ev) => { if (ev.animationName === 'splash-out') splash.remove(); });
+
+  // Gym-module (gym.js) koppelen
+  let gym = null;
+  if (window.GainlyGym) {
+    gym = window.GainlyGym({
+      get state() { return state; }, save, toast, render, go, ui, $, esc, fmt, fmtSigned, fmtDate, fmtShort, toDate, toISO,
+      todayISO, addDays, daysBetween, parseNum, uid, plural, chev, lineChart, emptyState, viewEl, DF_WEEKDAY, snapshot,
+    });
+    Object.assign(RENDER, gym.views);
+    Object.assign(TITLES, gym.titles);
+  }
 
   buildMeasureFields();
   applyTheme();

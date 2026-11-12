@@ -20,6 +20,7 @@
   </script>
   <link rel="preload" href="icons/logo.webp" as="image">
   <link rel="stylesheet" href="styles.css">
+  <script src="gym.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -29,6 +30,7 @@
   </div>
   <header class="topbar">
     <h1 class="topbar__title" id="viewTitle">Overzicht</h1>
+    <button type="button" class="topbar__pill" id="workoutPill" data-tab-go="gym" hidden><i aria-hidden="true"></i>Training · <span>0:00</span></button>
   </header>
 
   <main class="views" id="views">
@@ -38,6 +40,8 @@
     <section class="view" data-view="photos" hidden></section>
     <section class="view" data-view="food" hidden></section>
     <section class="view" data-view="gym" hidden></section>
+    <section class="view" data-view="gymHistory" hidden></section>
+    <section class="view" data-view="gymEx" hidden></section>
     <section class="view" data-view="settings" hidden></section>
   </main>
 
@@ -46,12 +50,28 @@
   </button>
 
   <!-- Tweede balk voor Lichaam, gestapeld boven het hoofdmenu -->
-  <nav class="subnav" aria-label="Lichaam">
+  <nav class="subnav" data-group="body" aria-label="Lichaam" style="--n:4">
     <button type="button" class="subtab" data-tab="overview">Overzicht</button>
     <button type="button" class="subtab" data-tab="compare">Vergelijk</button>
     <button type="button" class="subtab" data-tab="photos">Foto's</button>
     <button type="button" class="subtab" data-tab="log">Metingen</button>
   </nav>
+
+  <nav class="subnav" data-group="gym" aria-label="Gym" style="--n:3">
+    <button type="button" class="subtab" data-tab="gym">Training</button>
+    <button type="button" class="subtab" data-tab="gymHistory">Historiek</button>
+    <button type="button" class="subtab" data-tab="gymEx">Oefeningen</button>
+  </nav>
+
+  <!-- Rusttimer -->
+  <div class="rest" id="restBar" role="timer" aria-live="off" hidden>
+    <span class="rest__fill" aria-hidden="true"></span>
+    <span class="rest__label">Rust</span>
+    <strong class="rest__time">1:30</strong>
+    <button type="button" data-g="rest-minus" aria-label="15 seconden minder">−15</button>
+    <button type="button" data-g="rest-plus" aria-label="15 seconden meer">+15</button>
+    <button type="button" data-g="rest-skip">Sla over</button>
+  </div>
 
   <nav class="tabbar" aria-label="Hoofdmenu">
     <button type="button" class="tab" id="bodyTab">
@@ -62,7 +82,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 11v10M17 21V3c-2.2 0-4 2.5-4 6v5h4"/></svg>
       <span>Voeding</span>
     </button>
-    <button type="button" class="tab" data-tab="gym">
+    <button type="button" class="tab" id="gymTab">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>
       <span>Gym</span>
     </button>
@@ -137,6 +157,54 @@
       <p class="celebrate__text" id="celebrateText"></p>
       <p class="celebrate__more" id="celebrateMore"></p>
       <button type="button" class="button button--primary" data-close>Top!</button>
+    </div>
+  </dialog>
+
+  <!-- Gym: oefening kiezen -->
+  <dialog class="sheet sheet--tall" id="exPicker" aria-labelledby="pickTitle">
+    <div class="sheet__form">
+      <header class="sheet__head">
+        <button type="button" class="link" data-close>Annuleer</button>
+        <h2 id="pickTitle">Oefening kiezen</h2>
+        <button type="button" class="link link--strong" id="pickDone">Voeg toe</button>
+      </header>
+      <div class="sheet__body" id="pickBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Gym: schema bewerken -->
+  <dialog class="sheet" id="routineSheet" aria-labelledby="routineTitle">
+    <div class="sheet__form">
+      <header class="sheet__head">
+        <button type="button" class="link" data-close>Annuleer</button>
+        <h2 id="routineTitle">Nieuw schema</h2>
+        <button type="button" class="link link--strong" id="routineSave">Bewaar</button>
+      </header>
+      <div class="sheet__body" id="routineBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Gym: training bekijken -->
+  <dialog class="sheet" id="workoutSheet" aria-labelledby="workoutTitle">
+    <div class="sheet__form">
+      <header class="sheet__head">
+        <span></span>
+        <h2 id="workoutTitle">Training</h2>
+        <button type="button" class="link link--strong" data-close>Sluit</button>
+      </header>
+      <div class="sheet__body" id="workoutBody"></div>
+    </div>
+  </dialog>
+
+  <!-- Gym: oefening -->
+  <dialog class="sheet sheet--tall" id="exSheet" aria-labelledby="exSheetTitle">
+    <div class="sheet__form">
+      <header class="sheet__head">
+        <span></span>
+        <h2 id="exSheetTitle">Oefening</h2>
+        <button type="button" class="link link--strong" data-close>Sluit</button>
+      </header>
+      <div class="sheet__body" id="exSheetBody"></div>
     </div>
   </dialog>
 
