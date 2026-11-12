@@ -179,9 +179,13 @@ window.GainlyGym = function (core) {
     .then((list) => {
       const libImgs = new Set(LIB.map((e) => e.img).filter(Boolean));
       const libNames = new Set(LIB.map((e) => norm(e.name)));
+      const g0 = G();
+      const usedIds = new Set([...g0.workouts, ...g0.routines, ...(g0.active ? [g0.active] : [])].flatMap((w) => (w.items || []).map((it) => it.exId)));
       for (const o of list) {
         dbInfo.set(o.i, o);
         if (libImgs.has(o.i) || libNames.has(norm(o.n))) continue;
+        // Hidden (stretches, drills, extra cardio) unless you already used it somewhere
+        if (o.h && !usedIds.has('db:' + o.i)) continue;
         DBEX.push({ id: 'db:' + o.i, name: o.n, group: o.g, type: o.t, img: o.i });
       }
       migrateCustoms();
@@ -572,7 +576,8 @@ window.GainlyGym = function (core) {
       .sort((a, b) => (used.get(b.id) || 0) - (used.get(a.id) || 0) || (a.id.startsWith('db:') - b.id.startsWith('db:')) || a.name.localeCompare(b.name, 'en'));
   }
   function chipsHTML(sel, attr) {
-    const groups = GROUPS.filter((g) => g !== 'Other' || exAll().some((c) => c.group === 'Other'));
+    const all = exAll();
+    const groups = GROUPS.filter((g) => all.some((c) => c.group === g));
     return `<div class="chips-scroll" role="group" aria-label="Muscle group">
       <button type="button" class="chip" data-g="${attr}" data-group="" aria-pressed="${!sel}">All</button>
       ${groups.map((g) => `<button type="button" class="chip" data-g="${attr}" data-group="${g}" aria-pressed="${sel === g}">${g}</button>`).join('')}
