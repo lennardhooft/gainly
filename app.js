@@ -44,7 +44,7 @@
   // Categorieën in het menu: Lichaam heeft een tweede balk met zijn vier pagina's.
   const BODY_VIEWS = ['overview', 'compare', 'photos', 'log'];
   const GYM_VIEWS = ['gym', 'gymHistory', 'gymEx'];
-  const FOOD_VIEWS = ['food', 'foodMeals', 'foodGoals'];
+  const FOOD_VIEWS = ['food', 'foodFavs', 'foodMeals', 'foodGoals'];
   const groupOf = (v) => (BODY_VIEWS.includes(v) ? 'body' : GYM_VIEWS.includes(v) ? 'gym' : FOOD_VIEWS.includes(v) ? 'food' : '');
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).

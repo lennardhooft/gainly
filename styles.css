@@ -1369,3 +1369,15 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .split-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .fa-sec { font: 600 13px/1.2 var(--font); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 4px 8px; }
 .fa-sec:first-child { margin-top: 4px; }
+
+/* Favourites */
+.fa-head > div { min-width: 0; flex: 1; }
+.fav-btn { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--muted); }
+.fav-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; transition: scale 0.25s var(--ease-out); }
+.fav-btn[aria-pressed="true"] { color: #f5b942; border-color: color-mix(in srgb, #f5b942 40%, var(--border)); }
+.fav-btn[aria-pressed="true"] svg { fill: currentColor; scale: 1.08; }
+.fav-btn:active svg { scale: 0.85; }
+.fav-type { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; color: var(--muted); }
+.fav-type select { border: 0; background: none; color: var(--text); font: 600 15px var(--font); text-align: right; max-width: 60%; }
+.fav-chips { margin-top: 0; margin-bottom: 4px; }
+.fav-list { padding: 0 12px; }

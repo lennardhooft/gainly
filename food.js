@@ -19,6 +19,7 @@ window.GainlyFood = function (core) {
     const f = s.food;
     if (!f.days || typeof f.days !== 'object') f.days = {};
     if (!f.products || typeof f.products !== 'object') f.products = {};
+    if (!f.favs || typeof f.favs !== 'object') f.favs = {};
     if (!f.goals || typeof f.goals !== 'object') f.goals = {};
     for (const k in DEFAULT_GOALS) if (f.goals[k] == null) f.goals[k] = DEFAULT_GOALS[k];
     if (!f.goals.split || typeof f.goals.split !== 'object') f.goals.split = { ...DEFAULT_SPLIT };
@@ -108,6 +109,47 @@ window.GainlyFood = function (core) {
     return Math.round(g.kcal * (sp[key] || 0) / tot);
   }
 
+  /* ---------------- Food types (for favourites) ---------------- */
+  const CATS = [['fruitveg', 'Fruit & veg'], ['meatfish', 'Meat & fish'], ['dairy', 'Dairy & eggs'], ['grains', 'Bread, grains & potatoes'], ['plant', 'Plant protein & nuts'], ['snacks', 'Snacks & sweets'], ['drinks', 'Drinks'], ['other', 'Other']];
+  const CAT_LABEL = Object.fromEntries(CATS);
+  const NEVO_CAT = {
+    'Vegetables': 'fruitveg', 'Fruits': 'fruitveg',
+    'Meat and poultry': 'meatfish', 'Fish, crustacean and shellfish': 'meatfish', 'Cold meat cuts': 'meatfish',
+    'Milk and milk products': 'dairy', 'Cheese': 'dairy', 'Eggs': 'dairy',
+    'Bread': 'grains', 'Cereal products and types of flour': 'grains', 'Potatoes and tubers': 'grains',
+    'Legumes': 'plant', 'Nuts and seeds': 'plant', 'Meat substitutes and dairy substitutes': 'plant',
+    'Pastry and biscuits': 'snacks', 'Sugar, sweets and sweet sauces': 'snacks', 'Savoury snacks': 'snacks',
+    'Non-alcoholic beverages': 'drinks', 'Alcoholic beverages': 'drinks',
+  };
+  const OFF_CAT = [
+    ['drinks', /beverages|drinks|waters|juices|sodas|coffees|teas/],
+    ['dairy', /dairies|dairy|cheeses|yogurts|yoghurts|milks|eggs|skyr|quark/],
+    ['meatfish', /meats|poultr|chickens|fishes|seafood|hams|sausages/],
+    ['plant', /meat-analogues|plant-based-foods-and-beverages.*protein|legumes|nuts|seeds|tofu|peanut/],
+    ['snacks', /snacks|sweets|biscuits|chocolates|confectioner|desserts|candies|cakes|ice-creams|crisps|chips/],
+    ['grains', /cereals|breads|pastas|rices|potatoes|flours|oats|muesli|granola/],
+    ['fruitveg', /fruits|vegetables|salads/],
+  ];
+  function catFromTags(tags) {
+    const t = (tags || []).join(' ');
+    for (const [k, re] of OFF_CAT) if (re.test(t)) return k;
+    return 'other';
+  }
+  const isFav = (pid) => !!F().favs[pid];
+  function toggleFav(p) {
+    const f = F();
+    if (f.favs[p.id]) { delete f.favs[p.id]; saveNow(); toast('Removed from favourites'); return false; }
+    if (!f.products[p.id]) f.products[p.id] = p;
+    f.favs[p.id] = { cat: CAT_LABEL[p.cat] ? p.cat : 'other', at: Date.now() };
+    saveNow(); toast('Added to favourites');
+    return true;
+  }
+  // Breakfast in the morning, lunch around noon...: the meal a favourite goes to by default
+  function mealNow() {
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    return h < 10.5 ? 'breakfast' : h < 15 ? 'lunch' : h < 21 ? 'dinner' : 'snack';
+  }
+
   /* ---------------- NEVO (Dutch food composition table, RIVM) ---------------- */
   // Basic foods (fruit, rice, chicken...). Bundled, so it works instantly and offline.
   // Source: NEVO-online versie 2025/9.0, RIVM, Bilthoven. Values unchanged; salt = sodium × 2.5 is our addition.
@@ -116,11 +158,11 @@ window.GainlyFood = function (core) {
   let nevoP = null;
   function loadNevo() {
     return nevoP ||= fetch('nevo.json').then((r) => { if (!r.ok) throw new Error('nevo'); return r.json(); }).then((d) => d.foods.map((row) => {
-      const [code, nl, en, syn, , ml, ...v] = row;
+      const [code, nl, en, syn, grp, ml, ...v] = row;
       const n = {};
       d.keys.forEach((k, i) => { if (v[i] != null) n[k] = v[i]; });
       if (n.sodium != null) n.salt = Math.round(n.sodium * 2.5) / 1000;
-      return { p: { id: 'nevo:' + code, name: nl, brand: 'NEVO', img: '', serving: null, n, src: 'nevo', ...(ml ? { ml: 1 } : {}) }, name: fold(nl), hay: fold(`${nl} ${syn} ${en}`) };
+      return { p: { id: 'nevo:' + code, name: nl, brand: 'NEVO', img: '', serving: null, n, src: 'nevo', cat: NEVO_CAT[grp] || 'other', ...(ml ? { ml: 1 } : {}) }, name: fold(nl), hay: fold(`${nl} ${syn} ${en}`) };
     })).catch((e) => { nevoP = null; throw e; });
   }
   async function searchNevo(q) {
@@ -153,9 +195,9 @@ window.GainlyFood = function (core) {
     if (n.kcal == null && Number.isFinite(+nut['energy_100g'])) n.kcal = Math.round(+nut['energy_100g'] / 4.184);
     const name = p.product_name_nl || p.product_name_en || p.product_name || p.generic_name || 'Unnamed product';
     const brand = Array.isArray(p.brands) ? p.brands.join(', ') : (p.brands || '').split(',')[0];
-    return { id: 'off:' + p.code, code: p.code, name: String(name).trim(), brand: String(brand || '').trim(), img: p.image_front_small_url || p.image_small_url || '', serving: Number(p.serving_quantity) > 0 ? Math.round(+p.serving_quantity) : null, n, src: 'off' };
+    return { id: 'off:' + p.code, code: p.code, name: String(name).trim(), brand: String(brand || '').trim(), img: p.image_front_small_url || p.image_small_url || '', serving: Number(p.serving_quantity) > 0 ? Math.round(+p.serving_quantity) : null, n, src: 'off', cat: catFromTags(p.categories_tags) };
   }
-  const OFF_FIELDS = 'code,product_name,product_name_nl,product_name_en,generic_name,brands,serving_quantity,nutriments,image_front_small_url,image_small_url';
+  const OFF_FIELDS = 'code,product_name,product_name_nl,product_name_en,generic_name,brands,serving_quantity,nutriments,image_front_small_url,image_small_url,categories_tags';
   async function lookupBarcode(code) {
     const known = F().products['off:' + code] || Object.values(F().products).find((p) => p.code === code);
     if (known) return known;
@@ -167,7 +209,7 @@ window.GainlyFood = function (core) {
   }
   // Name search. The search servers are sometimes busy ("temporarily unavailable"), so try a few
   // of them with short pauses. The Belgian and Dutch sites show local products first.
-  const SEARCH_FIELDS = 'code,product_name,product_name_nl,brands,serving_quantity,nutriments,image_front_small_url';
+  const SEARCH_FIELDS = 'code,product_name,product_name_nl,brands,serving_quantity,nutriments,image_front_small_url,categories_tags';
   async function searchOFF(q, stale = () => false) {
     const hosts = ['be', 'nl', 'be', 'world', 'nl', 'be'];
     for (let i = 0; i < hosts.length; i++) {
@@ -191,7 +233,7 @@ window.GainlyFood = function (core) {
   const saveNow = () => { clearTimeout(saveTimer); core.save(); };
 
   /* ---------------- View: Diary ---------------- */
-  const fui = { day: null, cal: false, calMonth: null, open: new Set(['breakfast', 'lunch', 'dinner', 'snack']) };
+  const fui = { day: null, cal: false, calMonth: null, open: new Set(['breakfast', 'lunch', 'dinner', 'snack']), favCat: 'all' };
   const curDay = () => fui.day || todayISO();
   function dayLabel(iso) {
     const t = todayISO();
@@ -397,12 +439,14 @@ window.GainlyFood = function (core) {
       else if (!mine.length && !nevo.length && fa.results && !fa.results.length) list = hint('Nothing found. Try other words, scan the barcode, or create the food yourself.');
       else list = parts.join('') + `<h3 class="fa-sec">Products</h3>${off}`;
     } else {
-      const src = fa.tab === 'own' ? own : recentProducts();
-      list = src.length ? `<div class="list">${src.map(prodRow).join('')}</div>` : `<p class="hint" style="text-align:center;padding:20px 0">${fa.tab === 'own' ? 'Foods you create yourself show up here.' : 'Foods you log show up here, so you can add them again in one tap.'}</p>`;
+      const favs = Object.entries(F().favs).sort((a, b) => b[1].at - a[1].at).map(([pid]) => productOf(pid));
+      const src = fa.tab === 'own' ? own : fa.tab === 'favs' ? favs : recentProducts();
+      list = src.length ? `<div class="list">${src.map(prodRow).join('')}</div>` : `<p class="hint" style="text-align:center;padding:20px 0">${fa.tab === 'own' ? 'Foods you create yourself show up here.' : fa.tab === 'favs' ? 'Tap the star on a food to add it to your favourites.' : 'Foods you log show up here, so you can add them again in one tap.'}</p>`;
     }
     const dyn = `
       ${searching ? `<button type="button" class="inline-link" data-f="clear-search" style="margin:10px 2px 0;text-decoration:none">‹ Back to recent</button>` : `<div class="segmented segmented--full" role="group" aria-label="List" style="margin-top:12px">
         <button type="button" data-f="add-tab" data-t="recent" aria-pressed="${fa.tab === 'recent'}">Recent</button>
+        <button type="button" data-f="add-tab" data-t="favs" aria-pressed="${fa.tab === 'favs'}">Favourites</button>
         <button type="button" data-f="add-tab" data-t="own" aria-pressed="${fa.tab === 'own'}">My foods</button>
       </div>`}
       <div style="margin-top:12px">${list}</div>`;
@@ -461,13 +505,16 @@ window.GainlyFood = function (core) {
     amountSheet.showModal();
   }
   const pendingProduct = () => F().products[fam.pid] || resultCache.get(fam.pid) || productOf(fam.pid);
+  const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.2 2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z"/></svg>';
   function renderAmount() {
     const p = pendingProduct();
     const n = {};
     for (const x of NUTRIENTS) if (p.n[x.k] != null) n[x.k] = (p.n[x.k] * (fam.g || 0)) / 100;
     $('#foodAmountTitle').textContent = fam.entryId ? 'Edit food' : 'Add food';
     $('#foodAmountBody').innerHTML = `
-      <div class="fa-head">${thumb(p)}<div><h2 class="fa-name">${esc(p.name)}</h2><p class="eyebrow">${p.brand ? esc(p.brand) + ' · ' : ''}${nfmt(p.n.kcal, 'kcal')} kcal / 100 g</p></div></div>
+      <div class="fa-head">${thumb(p)}<div><h2 class="fa-name">${esc(p.name)}</h2><p class="eyebrow">${p.brand ? esc(p.brand) + ' · ' : ''}${nfmt(p.n.kcal, 'kcal')} kcal / 100 ${p.ml ? 'ml' : 'g'}</p></div>
+        <button type="button" class="fav-btn" data-f="fav-toggle" aria-pressed="${isFav(p.id)}" aria-label="${isFav(p.id) ? 'Remove from favourites' : 'Add to favourites'}">${STAR}</button></div>
+      ${isFav(p.id) ? `<label class="fav-type"><span>Favourite type</span><select data-fin="fav-cat">${CATS.map(([k, l]) => `<option value="${k}"${F().favs[p.id].cat === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
       <label class="field"><span class="field__label">Amount <small>grams (or ml)</small></span>
         <input data-fin="grams" inputmode="decimal" value="${fam.g != null ? fmt(fam.g, fam.g % 1 ? 1 : 0) : ''}" aria-label="Amount in grams"></label>
       <div class="chips" style="margin:-4px 0 12px">
@@ -656,6 +703,31 @@ window.GainlyFood = function (core) {
       <p class="hint" style="text-align:center">Changes are saved right away.</p>`;
   }
   function renderGoals() { viewEl('foodGoals').innerHTML = goalsHTML(); }
+  function renderFavs() {
+    const f = F();
+    const all = Object.entries(f.favs).map(([pid, v]) => ({ p: productOf(pid), cat: CAT_LABEL[v.cat] ? v.cat : 'other' })).sort((a, b) => a.p.name.localeCompare(b.p.name));
+    const counts = {};
+    for (const x of all) counts[x.cat] = (counts[x.cat] || 0) + 1;
+    if (fui.favCat !== 'all' && !counts[fui.favCat]) fui.favCat = 'all';
+    const shown = all.filter((x) => fui.favCat === 'all' || x.cat === fui.favCat);
+    const el = viewEl('foodFavs');
+    if (!all.length) {
+      el.innerHTML = `<div class="card empty"><h2>No favourites yet</h2><p>Open any food (search, scan or your diary) and tap the star. Your favourites show up here, sorted by type, so you can add them in one tap.</p></div>`;
+      return;
+    }
+    const groups = fui.favCat === 'all' ? CATS.filter(([k]) => counts[k]) : CATS.filter(([k]) => k === fui.favCat);
+    el.innerHTML = `
+      <div class="chips-scroll fav-chips" role="group" aria-label="Filter by type">
+        <button type="button" class="chip" data-f="fav-filter" data-c="all" aria-pressed="${fui.favCat === 'all'}">All ${all.length}</button>
+        ${CATS.filter(([k]) => counts[k]).map(([k, l]) => `<button type="button" class="chip" data-f="fav-filter" data-c="${k}" aria-pressed="${fui.favCat === k}">${l} ${counts[k]}</button>`).join('')}
+      </div>
+      ${groups.map(([k, l]) => `<h3 class="fa-sec">${l}</h3><div class="card list fav-list">${shown.filter((x) => x.cat === k).map(({ p }) => `<button type="button" class="food-row" data-f="fav-open" data-pid="${esc(p.id)}">
+        ${thumb(p)}
+        <span class="food-row__main"><span class="food-row__name">${esc(p.name)}</span><span class="food-row__sub">${p.brand ? esc(p.brand) + ' · ' : ''}${nfmt(p.n.kcal, 'kcal')} kcal per 100 ${p.ml ? 'ml' : 'g'}</span></span>${chev}
+      </button>`).join('')}</div>`).join('')}
+      <p class="hint" style="text-align:center">Tap a food to add it to ${esc(fmtDayShort())}. Change its type or remove it with the star.</p>`;
+  }
+  const fmtDayShort = () => { const d = curDay(); return d === todayISO() ? 'today' : fmtDate(d); };
   function renderMeals() {
     viewEl('foodMeals').innerHTML = '<div class="card empty"><span class="soon">Coming soon</span><h2>Fixed meals</h2><p>Save meals you eat often (like your standard breakfast) and add them to your day in one tap.</p></div>';
   }
@@ -696,6 +768,9 @@ window.GainlyFood = function (core) {
       case 'set-g': fam.g = +b.dataset.g; return renderAmount();
       case 'set-meal': fam.meal = b.dataset.meal; return renderAmount();
       case 'save-entry': return saveEntry();
+      case 'fav-toggle': { toggleFav(pendingProduct()); renderAmount(); return core.render(); }
+      case 'fav-filter': fui.favCat = b.dataset.c; return core.render();
+      case 'fav-open': { const p = productOf(b.dataset.pid); return openAmount({ product: p, meal: mealNow() }); }
       case 'del-entry': {
         const d = dayOf(fam.iso);
         for (const [k] of MEALS) d.meals[k] = d.meals[k].filter((e) => e.id !== fam.entryId);
@@ -707,7 +782,7 @@ window.GainlyFood = function (core) {
         const used = Object.values(F().days).some((d) => dayEntries(d).some((e) => e.pid === fp.id));
         if (used) { toast('This food is still in your diary'); return; }
         if (!await core.ask(`Delete “${fp.name}”?`, 'Delete')) return;
-        delete F().products[fp.id]; saveNow(); productSheet.close(); return renderAdd();
+        delete F().products[fp.id]; delete F().favs[fp.id]; saveNow(); productSheet.close(); core.render(); return renderAdd();
       }
       case 'goal-mode': {
         const g = F().goals, gg = goalGrams(), mode = b.dataset.mode2;
@@ -740,6 +815,7 @@ window.GainlyFood = function (core) {
   document.addEventListener('input', (ev) => {
     const t = ev.target, k = t.dataset?.fin;
     if (!k) return;
+    if (k === 'fav-cat') { const v = F().favs[fam.pid]; if (v) { v.cat = t.value; saveNow(); core.render(); } return; }
     if (k === 'grams') { const n = parseNum(t.value); if (!Number.isNaN(n)) { fam.g = n; updateAmountNumbers(); } return; }
     if (k.startsWith('p-') || k.startsWith('n-')) {
       if (k === 'p-name') fp.name = t.value;
@@ -778,7 +854,7 @@ window.GainlyFood = function (core) {
   $('#scanFind').dataset.f = 'scan-find';
 
   return {
-    views: { food: renderDiary, foodMeals: renderMeals, foodGoals: renderGoals },
-    titles: { food: 'Nutrition', foodMeals: 'Meals', foodGoals: 'Goals' },
+    views: { food: renderDiary, foodFavs: renderFavs, foodMeals: renderMeals, foodGoals: renderGoals },
+    titles: { food: 'Nutrition', foodFavs: 'Favourites', foodMeals: 'Meals', foodGoals: 'Goals' },
   };
 };
