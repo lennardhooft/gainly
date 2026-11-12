@@ -76,8 +76,10 @@
     } catch { /* leeg of corrupt */ }
     return { entries: [], settings: {} };
   }
+  // Onbekende velden (van oudere of nieuwere versies) blijven altijd bewaard.
   function normalize(s) {
     return {
+      ...s,
       entries: (s.entries || []).filter((e) => e && /^\d{4}-\d{2}-\d{2}$/.test(e.date)).map((e) => ({
         id: e.id || uid(), date: e.date, note: e.note || '', values: e.values || {},
       })),
@@ -85,9 +87,32 @@
     };
   }
   let state = load();
-  function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-    catch { toast('Opslaan mislukt: opslag vol of geblokkeerd'); }
+
+  // Herstelpunten: max. 1 per dag, de laatste 10 dagen, apart van de gewone opslag.
+  const SNAP_KEY = 'vorm:snapshots';
+  function snapshots() { try { return JSON.parse(localStorage.getItem(SNAP_KEY)) || []; } catch { return []; } }
+  function snapshot(reason = 'auto') {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data.entries || !data.entries.length) return;
+      const list = snapshots().filter((x) => x.day !== todayISO() || reason !== 'auto');
+      list.unshift({ day: todayISO(), at: new Date().toISOString(), reason, count: data.entries.length, data });
+      localStorage.setItem(SNAP_KEY, JSON.stringify(list.slice(0, 10)));
+    } catch { /* opslag vol: herstelpunt overslaan */ }
+  }
+
+  function save({ allowEmpty = false } = {}) {
+    try {
+      // Nooit een gevulde opslag stilletjes vervangen door een lege.
+      if (!allowEmpty && !state.entries.length) {
+        const prev = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+        if (prev && prev.entries && prev.entries.length) { state = normalize(prev); toast('Opslaan geweigerd om gegevensverlies te voorkomen'); return; }
+      }
+      if (!snapshots().some((x) => x.day === todayISO())) snapshot('auto');
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    } catch { toast('Opslaan mislukt: opslag vol of geblokkeerd'); }
   }
 
   const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null };
@@ -440,6 +465,18 @@
   }
   matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', applyTheme);
 
+  function snapshotsHTML() {
+    const list = snapshots();
+    if (!list.length) return '';
+    return `<div class="card">
+      <h2 class="card__title" style="margin-bottom:6px">Herstelpunten</h2>
+      <p class="prose" style="margin-bottom:10px">De app bewaart automatisch een kopie per dag (laatste 10). Tik om terug te zetten.</p>
+      <div class="list">${list.map((x, i) => `<button class="list__item" data-restore="${i}">
+        <div class="list__main"><div class="list__title">${fmtDate(x.day)}</div><div class="list__sub">${x.reason === 'update' ? 'Voor een update' : x.reason === 'restore' ? 'Voor het terugzetten' : 'Automatisch'}</div></div>
+        <div class="list__end">${plural(x.count, 'meting', 'metingen')}</div>${chev}</button>`).join('')}</div>
+    </div>`;
+  }
+
   /* ---------------- Settings ---------------- */
   function renderSettings() {
     const el = viewEl('settings');
@@ -447,7 +484,10 @@
     el.innerHTML = `
       <form class="card" id="settingsForm" novalidate>
         <h2 class="card__title" style="margin-bottom:14px">Profiel</h2>
-        <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
+        <div class="field-grid">
+          <label class="field"><span class="field__label">Lengte <small>cm</small></span><input name="height" inputmode="decimal" value="${s.height ? fmt(s.height, 0) : ''}" placeholder="180"></label>
+          <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
+        </div>
         <button class="button button--primary" type="submit">Bewaar profiel</button>
       </form>
 
@@ -455,13 +495,15 @@
 
       <div class="card">
         <h2 class="card__title" style="margin-bottom:6px">Back-up</h2>
-        <p class="prose" style="margin-bottom:14px">Je gegevens staan alleen op dit toestel (${plural(state.entries.length, 'meting', 'metingen')}). Maak af en toe een back-up naar Bestanden of iCloud Drive.</p>
+        <p class="prose" style="margin-bottom:14px">Je gegevens staan alleen op dit toestel (${plural(state.entries.length, 'meting', 'metingen')}). ${s.lastExport ? `Laatste back-up: ${fmtDate(s.lastExport)}.` : '<strong style="color:var(--bad)">Nog geen back-up gemaakt.</strong>'} Bewaar er af en toe een in Bestanden of iCloud Drive; dat is de enige kopie buiten de app.</p>
         <div class="button-row">
           <button class="button" data-action="export">Exporteer</button>
           <button class="button" data-action="import">Importeer</button>
         </div>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
+
+      ${snapshotsHTML()}
 
       <div class="card">
         <h2 class="card__title" style="margin-bottom:10px">Gegevens</h2>
@@ -576,7 +618,7 @@
   $('#measureDelete').addEventListener('click', () => {
     if (!editingEntry || !confirm(`Meting van ${fmtDate(editingEntry.date)} verwijderen?`)) return;
     state.entries = state.entries.filter((e) => e !== editingEntry);
-    save();
+    save({ allowEmpty: true });
     measureSheet.close();
     toast('Meting verwijderd');
     render();
@@ -594,7 +636,7 @@
     const name = `vorm-backup-${todayISO()}.json`;
     const file = new File([json], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Vorm back-up' }); return; }
+      try { await navigator.share({ files: [file], title: 'Vorm back-up' }); markExported(); return; }
       catch (e) { if (e.name === 'AbortError') return; }
     }
     const a = document.createElement('a');
@@ -603,7 +645,9 @@
     document.body.append(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    markExported();
   }
+  function markExported() { state.settings = { ...state.settings, lastExport: todayISO() }; save(); render(); }
 
   async function importData(file) {
     try {
@@ -611,6 +655,7 @@
       if (!data || !Array.isArray(data.entries)) throw new Error('format');
       const next = normalize(data);
       if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')} importeren? Dit vervangt je huidige gegevens.`)) return;
+      snapshot('restore');
       state = next;
       applyTheme();
       save();
@@ -655,6 +700,12 @@
       $('#mainChart')?.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    if (t.dataset.restore) {
+      const x = snapshots()[Number(t.dataset.restore)];
+      if (!x || !confirm(`Gegevens van ${fmtDate(x.day)} terugzetten (${plural(x.count, 'meting', 'metingen')})? Je huidige stand wordt eerst zelf een herstelpunt.`)) return;
+      snapshot('restore');
+      state = normalize(x.data); save({ allowEmpty: true }); applyTheme(); toast('Teruggezet'); return go('overview');
+    }
     if (t.dataset.editEntry) return openMeasure(state.entries.find((e) => e.id === t.dataset.editEntry));
     switch (t.dataset.action) {
       case 'add-measure': return openMeasure();
@@ -662,10 +713,10 @@
       case 'import': return $('#importFile').click();
       case 'demo':
         if (state.entries.length && !confirm('Demodata vervangt je huidige gegevens. Doorgaan?')) return;
-        state = demoData(); save(); toast('Demodata geladen'); return go('overview');
+        snapshot('restore'); state = demoData(); save(); toast('Demodata geladen'); return go('overview');
       case 'wipe':
         if (!confirm('Alle metingen definitief wissen? Maak eerst een back-up als je twijfelt.')) return;
-        state = { entries: [], settings: state.settings }; save(); toast('Alles gewist'); return render();
+        snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true }); toast('Alles gewist'); return render();
     }
   });
 
@@ -681,11 +732,14 @@
     if (ev.target.id !== 'settingsForm') return;
     ev.preventDefault();
     const f = ev.target;
+    const height = parseNum(f.height.value);
     const goalWeight = parseNum(f.goalWeight.value);
+    const hBad = Number.isNaN(height) || (height != null && (height < 100 || height > 250));
     const gBad = Number.isNaN(goalWeight) || (goalWeight != null && (goalWeight < 30 || goalWeight > 300));
+    f.height.setAttribute('aria-invalid', hBad);
     f.goalWeight.setAttribute('aria-invalid', gBad);
-    if (gBad) { toast('Controleer je streefgewicht'); return; }
-    state.settings = { ...state.settings, goalWeight };
+    if (hBad || gBad) { toast('Controleer je lengte en streefgewicht'); return; }
+    state.settings = { ...state.settings, height, goalWeight };
     save();
     toast('Profiel bewaard');
   });
@@ -719,7 +773,36 @@
   applyTheme();
   render();
 
+  // Vraag iOS de opslag niet automatisch op te ruimen.
+  navigator.storage?.persist?.().catch(() => {});
+
+  // Updates: een nieuwe versie wacht tot jij op "Bijwerken" tikt.
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    const banner = $('#updateBanner');
+    const offer = (worker) => {
+      banner.hidden = false;
+      $('#updateNow').onclick = () => {
+        snapshot('update');
+        worker.postMessage('activate');
+      };
+    };
+    $('#updateLater').addEventListener('click', () => { banner.hidden = true; });
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return; reloading = true; location.reload();
+    });
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('sw.js');
+        if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+        reg.addEventListener('updatefound', () => {
+          const w = reg.installing;
+          w?.addEventListener('statechange', () => {
+            if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w);
+          });
+        });
+        reg.update().catch(() => {});
+      } catch { /* geen service worker */ }
+    });
   }
 })();

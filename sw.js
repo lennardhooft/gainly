@@ -1,10 +1,20 @@
-// Offline-cache voor de app-shell. Verhoog VERSION bij elke wijziging zodat de iPhone de nieuwe versie ophaalt.
-const VERSION = 'vorm-v4';
+// Offline-cache voor de app. Een nieuwe versie (andere VERSION) wordt op de achtergrond klaargezet,
+// maar pas actief als de gebruiker in de app op "Bijwerken" tikt. Gegevens (localStorage) raakt dit nooit aan.
+const VERSION = 'vorm-v6';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const cache = await caches.open(VERSION);
+    await cache.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })));
+    // Allereerste installatie: meteen actief. Anders wachten op de gebruiker.
+    if (!self.registration.active) self.skipWaiting();
+  })());
+});
+
+self.addEventListener('message', (e) => {
+  if (e.data === 'activate') self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
@@ -13,16 +23,17 @@ self.addEventListener('activate', (e) => {
     .then(() => self.clients.claim()));
 });
 
-// Netwerk eerst (zodat updates meteen zichtbaar zijn), cache als je offline bent.
+// Cache eerst: de app blijft exact dezelfde versie tot je bijwerkt.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(e.request)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(VERSION).then((c) => c.put(e.request, copy));
-        return res;
-      })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))
-  );
+  e.respondWith((async () => {
+    const cache = await caches.open(VERSION);
+    const hit = await cache.match(e.request, { ignoreSearch: true });
+    if (hit) return hit;
+    try {
+      return await fetch(e.request);
+    } catch {
+      return (await cache.match('index.html')) || Response.error();
+    }
+  })());
 });
