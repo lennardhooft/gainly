@@ -1856,5 +1856,24 @@ window.GainlyGym = function (core) {
     afterRender() { tick(); },
     importHevy,
     importHevyRoutines,
+    // Figures for the weekly report (dates are local ISO days, inclusive)
+    weekStats(from, to) {
+      const day = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+      const ws = G().workouts.filter((w) => { const d = day(w.start); return d >= from && d <= to; }).sort((a, b) => a.start - b.start);
+      let sets = 0, volume = 0, minutes = 0;
+      const muscles = new Map(), prs = [];
+      for (const w of ws) {
+        minutes += Math.max(0, Math.round(((w.end || w.start) - w.start) / 60000));
+        for (const it of w.items) {
+          const ex = exById(it.exId);
+          const n = it.sets.filter((st) => st.t !== 'w').length;
+          sets += n;
+          for (const st of it.sets) if (st.t !== 'w' && st.w > 0 && st.r > 0) volume += st.w * st.r;
+          for (const m of new Set(musclesOf(ex))) muscles.set(m, (muscles.get(m) || 0) + n);
+        }
+        for (const pr of w.prs || []) prs.push({ name: exById(pr.exId).name, label: prLabel(pr), day: day(w.start) });
+      }
+      return { workouts: ws.map((w) => ({ name: w.name, day: day(w.start) })), sets, volume: Math.round(volume), minutes, prs, muscles: [...muscles].sort((a, b) => b[1] - a[1]) };
+    },
   };
 };

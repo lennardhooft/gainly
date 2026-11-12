@@ -326,6 +326,89 @@
     return `<div class="card empty"><h2>${title}</h2><p>${text}</p>${action ? `<button class="button button--primary" data-action="${action}">${label}</button>` : ''}</div>`;
   }
 
+  /* ---------------- Weekly report ---------------- */
+  const mondayOf = (iso) => { const d = toDate(iso); return addDays(iso, -((d.getDay() + 6) % 7)); };
+  const weekNo = (iso) => { const d = toDate(iso); const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t - y0) / 864e5 + 1) / 7); };
+  let reportWeek = null;
+  function weekData(from) {
+    const to = addDays(from, 6), pFrom = addDays(from, -7), pTo = addDays(from, -1);
+    const wIn = (a, b) => state.entries.filter((e) => e.values.weight != null && e.date >= a && e.date <= b).map((e) => +e.values.weight);
+    const avg = (xs) => (xs.length ? xs.reduce((x, y) => x + y, 0) / xs.length : null);
+    const w = wIn(from, to), pw = wIn(pFrom, pTo);
+    return {
+      from, to,
+      weight: { avg: avg(w), prev: avg(pw), n: w.length },
+      food: food && food.weekStats ? food.weekStats(from, to) : null,
+      gym: gym && gym.weekStats ? gym.weekStats(from, to) : null,
+    };
+  }
+  const wkLabel = (from) => `Week ${weekNo(from)} · ${fmtShort(from)} – ${fmtShort(addDays(from, 6))}`;
+  function weekCardHTML() {
+    const from = mondayOf(todayISO()), d = weekData(from);
+    const parts = [];
+    if (d.weight.avg != null) parts.push(`<span><b>${fmt(d.weight.avg)}</b> kg avg</span>`);
+    if (d.food && d.food.avgKcal != null) parts.push(`<span><b>${Math.round(d.food.avgKcal).toLocaleString('en-GB')}</b> kcal/day</span>`);
+    if (d.gym) parts.push(`<span><b>${d.gym.workouts.length}</b> ${d.gym.workouts.length === 1 ? 'workout' : 'workouts'}</span>`);
+    return `<button type="button" class="card week-card" data-action="week-report">
+      <span class="week-card__top"><span class="eyebrow">This week</span>${chev}</span>
+      <span class="week-card__stats">${parts.join('') || '<span class="hint">Nothing logged yet this week</span>'}</span>
+    </button>`;
+  }
+  function openReport(from = mondayOf(todayISO())) { reportWeek = from; renderReport(); $('#weekSheet').showModal(); $('#weekBody').scrollTop = 0; }
+  function renderReport() {
+    const d = weekData(reportWeek), bulk = isBulk();
+    const last = reportWeek >= mondayOf(todayISO());
+    const delta = d.weight.avg != null && d.weight.prev != null ? d.weight.avg - d.weight.prev : null;
+    const good = delta == null ? null : Math.abs(delta) < 0.05 ? null : bulk ? delta > 0 : delta < 0;
+    const f = d.food, g = d.gym;
+    const tile = (v, label, sub = '', cls = '') => `<div class="st-tile${cls}"><strong>${v}</strong><span>${label}</span>${sub ? `<em>${sub}</em>` : ''}</div>`;
+    const rate = f ? f.ratings : null, rated = rate ? rate.good + rate.ok + rate.poor : 0;
+    const RC = { good: 'var(--good)', ok: '#d9a441', poor: 'var(--bad)' };
+    $('#weekBody').innerHTML = `
+      <div class="day-nav" style="margin-bottom:14px">
+        <button type="button" class="cal__nav" data-week-step="-1" aria-label="Previous week">‹</button>
+        <span class="day-nav__label" style="pointer-events:none">${wkLabel(reportWeek)}</span>
+        <button type="button" class="cal__nav" data-week-step="1" aria-label="Next week"${last ? ' disabled' : ''}>›</button>
+      </div>
+
+      <h3 class="section-title">Body</h3>
+      <div class="card rep-card">${d.weight.avg != null ? `
+        <div class="rep-row"><span>Average weight</span><b>${fmt(d.weight.avg)} kg</b></div>
+        <div class="rep-row"><span>Versus the week before</span><b style="color:${good == null ? 'var(--text)' : good ? 'var(--good)' : 'var(--bad)'}">${delta == null ? '—' : `${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${fmt(Math.abs(delta), 2)} kg`}</b></div>
+        <div class="rep-row"><span>Weigh-ins</span><b>${d.weight.n}</b></div>`
+        : '<p class="hint" style="margin:0">No weigh-ins this week.</p>'}</div>
+
+      <h3 class="section-title">Nutrition</h3>
+      <div class="card rep-card">${f && f.logged ? `
+        <div class="st-tiles" style="margin-bottom:10px">
+          ${tile(Math.round(f.avgKcal).toLocaleString('en-GB'), 'kcal per day', `${Math.round((f.avgKcal / f.goalKcal) * 100)}% of goal`)}
+          ${tile(Math.round(f.avgProtein) + ' g', 'protein per day', `${Math.round((f.avgProtein / f.goalProtein) * 100)}% of goal`)}
+          ${tile(`${f.logged}/${f.past}`, 'days logged')}
+        </div>
+        ${rated ? `<div class="st-stack">${['good', 'ok', 'poor'].filter((k) => rate[k]).map((k) => `<i style="flex:${rate[k]};background:${RC[k]}"></i>`).join('')}</div>
+        <div class="st-counts">${['good', 'ok', 'poor'].map((k) => `<div><span class="rate__dot" style="--rc:${RC[k]}"></span><b>${rate[k]}</b> ${k === 'ok' ? 'average' : k}</div>`).join('')}</div>` : ''}`
+        : '<p class="hint" style="margin:0">No food logged this week.</p>'}</div>
+
+      <h3 class="section-title">Training</h3>
+      <div class="card rep-card">${g && g.workouts.length ? `
+        <div class="st-tiles" style="margin-bottom:10px">
+          ${tile(g.workouts.length, g.workouts.length === 1 ? 'workout' : 'workouts')}
+          ${tile(g.sets, 'sets')}
+          ${tile(g.volume >= 10000 ? (g.volume / 1000).toFixed(1) + ' t' : g.volume.toLocaleString('en-GB') + ' kg', 'volume', g.minutes ? `${Math.floor(g.minutes / 60) ? Math.floor(g.minutes / 60) + ' h ' : ''}${g.minutes % 60} min` : '')}
+        </div>
+        <div class="rep-list">${g.workouts.map((w) => `<div class="rep-row"><span>${esc(w.name)}</span><b>${esc(DF_WEEKDAY.format(toDate(w.day)).split(' ')[0])}</b></div>`).join('')}</div>
+        ${g.prs.length ? `<p class="rep-sub">🏆 ${g.prs.length === 1 ? 'Personal record' : `${g.prs.length} personal records`}</p><div class="rep-list">${g.prs.map((p) => `<div class="rep-row"><span>${esc(p.name)}</span><b>${esc(p.label.replace(/^heaviest weight |^best estimated 1RM /, ''))}${/1RM/.test(p.label) ? ' e1RM' : ''}</b></div>`).join('')}</div>` : ''}
+        ${g.muscles.length ? `<p class="rep-sub">Sets per muscle</p><div class="rep-muscles">${g.muscles.slice(0, 8).map(([m, n]) => `<span>${esc(m)} <b>${n}</b></span>`).join('')}</div>` : ''}`
+        : '<p class="hint" style="margin:0">No workouts this week.</p>'}</div>`;
+  }
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-week-step]');
+    if (!b || b.disabled) return;
+    reportWeek = mondayOf(addDays(reportWeek, 7 * +b.dataset.weekStep));
+    if (reportWeek > mondayOf(todayISO())) reportWeek = mondayOf(todayISO());
+    renderReport(); $('#weekBody').scrollTop = 0;
+  });
+
   function renderOverview() {
     const el = viewEl('overview');
     if (!state.entries.length) {
@@ -385,7 +468,7 @@
       </button>`;
     }).join('');
 
-    el.innerHTML = `${hero}
+    el.innerHTML = `${weekCardHTML()}${hero}
       <div class="card">
         <div class="card__head">
           <select class="select" id="metricSelect" aria-label="Choose a measurement">
@@ -1295,7 +1378,7 @@
     render();
   });
 
-  for (const dlg of [measureSheet, photoSheet, viewer, celebrateDlg]) {
+  for (const dlg of [measureSheet, photoSheet, viewer, celebrateDlg, $('#weekSheet')]) {
     dlg.addEventListener('click', (ev) => {
       if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close();
     });
@@ -1436,6 +1519,7 @@
     switch (t.dataset.action) {
       case 'add-measure': return openMeasure();
       case 'add-photos': return openPhotoSheet();
+      case 'week-report': return openReport();
       case 'export': return exportData();
       case 'export-photos': return exportData(true);
       case 'import': return $('#importFile').click();
@@ -1582,8 +1666,9 @@
     Object.assign(TITLES, gym.titles);
   }
   // Voeding-module (food.js)
+  let food = null;
   if (window.GainlyFood) {
-    const food = window.GainlyFood({
+    food = window.GainlyFood({
       get state() { return state; }, save, toast, render, go, ui, $, esc, fmt, fmtDate, fmtShort, toISO, todayISO, addDays,
       parseNum, uid, plural, chev, viewEl, DF_WEEKDAY, ask,
     });

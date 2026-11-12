@@ -143,7 +143,37 @@ window.GainlyFood = function (core) {
     if (!f.products[p.id]) f.products[p.id] = p;
     f.favs[p.id] = { cat: CAT_LABEL[p.cat] ? p.cat : 'other', at: Date.now() };
     saveNow(); toast('Added to favourites');
+    fillFavCats();
     return true;
+  }
+  // Branded foods saved before food types existed have no type yet: ask Open Food Facts once.
+  let favFill = null;
+  function fillFavCats() {
+    if (favFill || !navigator.onLine) return favFill;
+    const f = F();
+    const todo = Object.entries(f.favs).filter(([pid, v]) => {
+      const p = f.products[pid];
+      return p && p.src === 'off' && p.code && !p.cat && !p.catTried && v.cat === 'other' && !v.manual;
+    }).slice(0, 40);
+    if (!todo.length) return null;
+    favFill = (async () => {
+      let changed = 0;
+      for (const [pid, v] of todo) {
+        const p = f.products[pid];
+        try {
+          const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(p.code)}?fields=categories_tags`);
+          const d = r.ok ? await r.json() : null;
+          p.catTried = 1;
+          const cat = d && d.product ? catFromTags(d.product.categories_tags) : 'other';
+          p.cat = cat;
+          if (cat !== 'other' && v.cat === 'other' && !v.manual) { v.cat = cat; changed++; }
+        } catch { break; } // offline or busy: try again next time
+      }
+      saveNow();
+      favFill = null;
+      if (changed) core.render();
+    })();
+    return favFill;
   }
   // Breakfast in the morning, lunch around noon...: the meal a favourite goes to by default
   function mealNow() {
@@ -1026,6 +1056,7 @@ window.GainlyFood = function (core) {
   }
   function renderGoals() { viewEl('foodGoals').innerHTML = goalsHTML(); }
   function renderFavs() {
+    fillFavCats();
     const f = F();
     const all = Object.entries(f.favs).map(([pid, v]) => ({ p: productOf(pid), cat: CAT_LABEL[v.cat] ? v.cat : 'other' })).sort((a, b) => a.p.name.localeCompare(b.p.name));
     const counts = {};
@@ -1260,7 +1291,7 @@ window.GainlyFood = function (core) {
     if (k === 'mb-name') { mb.name = t.value; return; }
     if (k === 'mb-g') { const n = parseNum(t.value); const it = mb.items[+t.dataset.i]; if (it && n != null && !Number.isNaN(n)) { it.g = n; updateBuilderTotals(); } return; }
     if (k === 'sm-target') { (fui.smTarget ||= {})[t.dataset.id] = t.value; return; }
-    if (k === 'fav-cat') { const v = F().favs[fam.pid]; if (v) { v.cat = t.value; saveNow(); core.render(); } return; }
+    if (k === 'fav-cat') { const v = F().favs[fam.pid]; if (v) { v.cat = t.value; v.manual = true; saveNow(); core.render(); } return; }
     if (k === 'grams') { const n = parseNum(t.value); if (!Number.isNaN(n)) { fam.g = n; updateAmountNumbers(); } return; }
     if (k.startsWith('p-') || k.startsWith('n-')) {
       if (k === 'p-name') fp.name = t.value;
@@ -1302,6 +1333,23 @@ window.GainlyFood = function (core) {
   $('#scanFind').dataset.f = 'scan-find';
 
   return {
+    weekStats(from, to) {
+      const today = todayISO(), gg = goalGrams();
+      let logged = 0, kcal = 0, protein = 0, past = 0;
+      const ratings = { good: 0, ok: 0, poor: 0 };
+      for (let d = from; d <= to; d = addDays(d, 1)) {
+        if (d > today) break;
+        past++;
+        const e = dayEntries(peekDay(d));
+        if (!e.length) continue;
+        const r = rateDay(d);
+        if (r && r.live) continue; // today isn't finished yet
+        const n = sumN(e).n;
+        logged++; kcal += n.kcal || 0; protein += n.protein || 0;
+        if (r && r.level) ratings[r.level]++;
+      }
+      return { logged, past, avgKcal: logged ? kcal / logged : null, avgProtein: logged ? protein / logged : null, goalKcal: gg.kcal, goalProtein: gg.protein, ratings };
+    },
     views: { food: renderDiary, foodFavs: renderFavs, foodMeals: renderMeals, foodGoals: renderGoals },
     titles: { food: 'Nutrition', foodFavs: 'Favourites', foodMeals: 'Meals', foodGoals: 'Goals' },
   };
