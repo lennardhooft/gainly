@@ -1,4 +1,4 @@
-/* Vorm — gewicht en lichaamsmaten. Alles lokaal (localStorage). */
+/* Gainly (voorheen Vorm) — gewicht en lichaamsmaten. Alles lokaal (localStorage). */
 (() => {
   'use strict';
 
@@ -33,9 +33,9 @@
     { key: 'all', label: 'Alles', days: Infinity },
   ];
 
-  const TITLES = { overview: 'Overzicht', compare: 'Vergelijk', photos: "Foto's", food: 'Voeding', gym: 'Gym', settings: 'Instellingen' };
-  // Categorieën in het menu: Lichaam bundelt de drie lichaamspagina's in een submenu.
-  const BODY_VIEWS = ['overview', 'compare', 'photos'];
+  const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', photos: "Foto's", food: 'Voeding', gym: 'Gym', settings: 'Instellingen' };
+  // Categorieën in het menu: Lichaam heeft een tweede balk met zijn vier pagina's.
+  const BODY_VIEWS = ['overview', 'log', 'compare', 'photos'];
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).
   const TIPS = {
@@ -338,8 +338,7 @@
       </div>
       <h2 class="section-title">Alle maten · sinds start</h2>
       <div class="metric-grid">${cards}</div>
-      ${logHTML()}
-      <p class="hint" style="text-align:center">Tik op een meting om ze aan te passen of te verwijderen. Houd + ingedrukt om snel alleen je gewicht in te geven.</p>`;
+      <p class="hint" style="text-align:center">Houd + ingedrukt om snel alleen je gewicht in te geven.</p>`;
 
     const range = RANGES.find((r) => r.key === ui.range) || RANGES[RANGES.length - 1];
     const from = range.days === Infinity ? '0000-00-00' : addDays(todayISO(), -range.days);
@@ -476,6 +475,15 @@
       }
     }
     celebrateDlg.showModal();
+  }
+
+  function renderLog() {
+    const el = viewEl('log');
+    if (!state.entries.length) {
+      el.innerHTML = emptyState('Nog geen metingen', 'Elke meting die je toevoegt, verschijnt hier. Tik erop om ze aan te passen of te verwijderen.', 'add-measure', 'Meting toevoegen');
+      return;
+    }
+    el.innerHTML = `${logHTML()}<p class="hint" style="text-align:center">Tik op een meting om ze aan te passen of te verwijderen.</p>`;
   }
 
   function logHTML() {
@@ -970,19 +978,20 @@
   const renderFood = renderSoon('Calorieën bijhouden', 'Hier komt je voeding: wat je eet, je calorieën en eiwitten per dag.');
   const renderGym = renderSoon('Trainingen', 'Hier komen je trainingen: oefeningen, sets, gewichten en je records.');
 
-  const RENDER = { overview: renderOverview, compare: renderCompare, photos: renderPhotos, food: renderFood, gym: renderGym, settings: renderSettings };
+  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, photos: renderPhotos, food: renderFood, gym: renderGym, settings: renderSettings };
 
   function render() {
     if (!RENDER[ui.view]) ui.view = 'overview';
     for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== ui.view;
-    for (const t of document.querySelectorAll('.tab, .submenu__item')) {
+    document.body.classList.toggle('has-subnav', BODY_VIEWS.includes(ui.view));
+    for (const t of document.querySelectorAll('.tab, .subtab')) {
       const on = t.dataset.tab ? t.dataset.tab === ui.view : t.id === 'bodyTab' && BODY_VIEWS.includes(ui.view);
       if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     }
     $('#viewTitle').textContent = TITLES[ui.view];
-    document.title = ui.view === 'overview' ? 'Vorm' : `${TITLES[ui.view]} · Vorm`;
+    document.title = ui.view === 'overview' ? 'Gainly' : `${TITLES[ui.view]} · Gainly`;
     const fab = $('#fab');
-    fab.hidden = !['overview', 'photos'].includes(ui.view);
+    fab.hidden = !['overview', 'log', 'photos'].includes(ui.view);
     fab.setAttribute('aria-label', ui.view === 'photos' ? "Foto's toevoegen" : 'Nieuwe meting');
     RENDER[ui.view]();
     saveUi();
@@ -1117,10 +1126,10 @@
       payload.photos = await Promise.all(photos.map(async (p) => ({ id: p.id, date: p.date, pose: p.pose, w: p.w, h: p.h, t: p.t, data: await blobToB64(p.blob) })));
     }
     const json = JSON.stringify(payload, null, withPhotos ? 0 : 2);
-    const name = `vorm-backup-${todayISO()}${withPhotos ? '-met-fotos' : ''}.json`;
+    const name = `gainly-backup-${todayISO()}${withPhotos ? '-met-fotos' : ''}.json`;
     const file = new File([json], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Vorm back-up' }); markExported(); return; }
+      try { await navigator.share({ files: [file], title: 'Gainly back-up' }); markExported(); return; }
       catch (e) { if (e.name === 'AbortError') return; }
     }
     const a = document.createElement('a');
@@ -1159,7 +1168,7 @@
       toast(failed ? `Geïmporteerd, maar ${failed} foto's mislukt` : 'Back-up geïmporteerd');
       render();
     } catch {
-      toast('Dit is geen geldig Vorm-back-upbestand');
+      toast('Dit is geen geldig Gainly-back-upbestand');
     }
   }
 
@@ -1183,22 +1192,11 @@
   }
 
   /* ---------------- Events ---------------- */
-  // Submenu van Lichaam: klapt open boven de tabbalk.
-  const bodyMenu = $('#bodyMenu');
-  const bodyTab = $('#bodyTab');
-  function setMenu(open) {
-    bodyMenu.hidden = !open;
-    bodyTab.setAttribute('aria-expanded', String(open));
-    document.body.classList.toggle('menu-open', open);
-  }
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !bodyMenu.hidden) { setMenu(false); bodyTab.focus(); } });
-
   document.addEventListener('click', (ev) => {
-    if (!bodyMenu.hidden && !ev.target.closest('#bodyMenu, #bodyTab')) { setMenu(false); return; }
     const t = ev.target.closest('button, [data-tab-go]');
     if (!t) return;
-    if (t.id === 'bodyTab') return setMenu(bodyMenu.hidden);
-    if (t.dataset.tab) { setMenu(false); return go(t.dataset.tab); }
+    if (t.id === 'bodyTab') return go(BODY_VIEWS.includes(ui.view) ? ui.view : 'overview');
+    if (t.dataset.tab) return go(t.dataset.tab);
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
     if (t.dataset.mode) return setTheme({ mode: t.dataset.mode });
     if (t.dataset.accent) return setTheme({ accent: t.dataset.accent });
