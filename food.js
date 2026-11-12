@@ -108,6 +108,39 @@ window.GainlyFood = function (core) {
     return Math.round(g.kcal * (sp[key] || 0) / tot);
   }
 
+  /* ---------------- NEVO (Dutch food composition table, RIVM) ---------------- */
+  // Basic foods (fruit, rice, chicken...). Bundled, so it works instantly and offline.
+  // Source: NEVO-online versie 2025/9.0, RIVM, Bilthoven. Values unchanged; salt = sodium × 2.5 is our addition.
+  const NEVO_CREDIT = 'NEVO-online versie 2025/9.0, RIVM, Bilthoven';
+  const fold = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  let nevoP = null;
+  function loadNevo() {
+    return nevoP ||= fetch('nevo.json').then((r) => { if (!r.ok) throw new Error('nevo'); return r.json(); }).then((d) => d.foods.map((row) => {
+      const [code, nl, en, syn, , ml, ...v] = row;
+      const n = {};
+      d.keys.forEach((k, i) => { if (v[i] != null) n[k] = v[i]; });
+      if (n.sodium != null) n.salt = Math.round(n.sodium * 2.5) / 1000;
+      return { p: { id: 'nevo:' + code, name: nl, brand: 'NEVO', img: '', serving: null, n, src: 'nevo', ...(ml ? { ml: 1 } : {}) }, name: fold(nl), hay: fold(`${nl} ${syn} ${en}`) };
+    })).catch((e) => { nevoP = null; throw e; });
+  }
+  async function searchNevo(q) {
+    const words = fold(q).split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const list = await loadNevo();
+    const hits = [];
+    for (const f of list) {
+      if (!words.every((w) => f.hay.includes(w))) continue;
+      let score = 0;
+      if (f.name.startsWith(words[0])) score += 6;
+      if (f.name === words[0] || f.name.startsWith(words[0] + ' ')) score += 4;
+      for (const w of words) { if (new RegExp('(^|[\\s/(-])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(f.name)) score += 3; else if (f.name.includes(w)) score += 1; }
+      if (/\brauw\b|\bonbereid\b/.test(f.name)) score += 0.5;
+      score -= f.name.length / 60;
+      hits.push([score, f.p]);
+    }
+    return hits.sort((a, b) => b[0] - a[0]).slice(0, 25).map((h) => h[1]);
+  }
+
   /* ---------------- Open Food Facts ---------------- */
   function fromOFF(p) {
     const nut = p.nutriments || {};
@@ -320,7 +353,7 @@ window.GainlyFood = function (core) {
 
   /* ---------------- Sheet: add food (search / recent / my foods / scan) ---------------- */
   const addSheet = $('#foodAdd');
-  const fa = { meal: 'breakfast', q: '', results: null, busy: false, tab: 'recent', err: '' };
+  const fa = { meal: 'breakfast', q: '', results: null, busy: false, tab: 'recent', err: '', nevo: null, mine: null };
   function recentProducts() {
     const seen = new Map();
     for (const iso of Object.keys(F().days).sort().reverse()) {
@@ -330,23 +363,35 @@ window.GainlyFood = function (core) {
     return [...seen.keys()].map(productOf).filter((p) => p.n);
   }
   function openAdd(meal) {
-    Object.assign(fa, { meal, q: '', results: null, busy: false, err: '', tab: 'recent' });
+    Object.assign(fa, { meal, q: '', results: null, busy: false, err: '', tab: 'recent', nevo: null, mine: null });
     $('#foodAddTitle').textContent = `Add to ${MEALS.find(([k]) => k === meal)[1]}`;
     renderAdd();
     addSheet.showModal();
   }
   const prodRow = (p) => `<button type="button" class="food-row" data-f="pick-product" data-pid="${esc(p.id)}">
     ${thumb(p)}
-    <span class="food-row__main"><span class="food-row__name">${esc(p.name)}</span><span class="food-row__sub">${p.brand ? esc(p.brand) + ' · ' : ''}${nfmt(p.n.kcal, 'kcal')} kcal per 100 g</span></span>${chev}
+    <span class="food-row__main"><span class="food-row__name">${esc(p.name)}</span><span class="food-row__sub">${p.brand ? esc(p.brand) + ' · ' : ''}${nfmt(p.n.kcal, 'kcal')} kcal per 100 ${p.ml ? 'ml' : 'g'}</span></span>${chev}
   </button>`;
   let resultCache = new Map();
   function renderAdd() {
     const own = Object.values(F().products).filter((p) => p.src === 'own').sort((a, b) => a.name.localeCompare(b.name));
     let list;
-    if (fa.busy) list = '<p class="hint" style="text-align:center;padding:20px 0">Searching Open Food Facts…</p>';
-    else if (fa.err) list = `<p class="hint" style="text-align:center;padding:20px 0">${esc(fa.err)}</p>`;
-    else if (fa.results) list = fa.results.length ? `<div class="list">${fa.results.map(prodRow).join('')}</div>` : '<p class="hint" style="text-align:center;padding:20px 0">Nothing found. Try other words, scan the barcode, or create the food yourself.</p>';
-    else {
+    const searching = fa.nevo != null || fa.busy || fa.results || fa.err;
+    const hint = (t) => `<p class="hint" style="text-align:center;padding:14px 0">${t}</p>`;
+    const sec = (title, items) => `<h3 class="fa-sec">${title}</h3><div class="list">${items.map(prodRow).join('')}</div>`;
+    if (searching) {
+      const mine = fa.mine || [], nevo = fa.nevo || [];
+      const parts = [];
+      if (mine.length) parts.push(sec('Saved', mine));
+      if (nevo.length) parts.push(sec('Basic foods', nevo));
+      let off;
+      if (fa.busy) off = hint('Searching Open Food Facts…');
+      else if (fa.err) off = hint(esc(fa.err));
+      else if (fa.results && fa.results.length) off = `<div class="list">${fa.results.map(prodRow).join('')}</div>`;
+      else off = hint('No branded products found.');
+      if (!mine.length && !nevo.length && fa.results && !fa.results.length) list = hint('Nothing found. Try other words, scan the barcode, or create the food yourself.');
+      else list = parts.join('') + `<h3 class="fa-sec">Products</h3>${off}`;
+    } else {
       const src = fa.tab === 'own' ? own : recentProducts();
       list = src.length ? `<div class="list">${src.map(prodRow).join('')}</div>` : `<p class="hint" style="text-align:center;padding:20px 0">${fa.tab === 'own' ? 'Foods you create yourself show up here.' : 'Foods you log show up here, so you can add them again in one tap.'}</p>`;
     }
@@ -355,30 +400,35 @@ window.GainlyFood = function (core) {
         <input class="search" type="search" name="q" placeholder="Search a food or brand" value="${esc(fa.q)}" enterkeyhint="search" aria-label="Search food">
         <button type="button" class="food-scan" data-f="scan" aria-label="Scan barcode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Scan</button>
       </form>
-      ${fa.results || fa.busy || fa.err ? `<button type="button" class="inline-link" data-f="clear-search" style="margin:10px 2px 0;text-decoration:none">‹ Back to recent</button>` : `<div class="segmented segmented--full" role="group" aria-label="List" style="margin-top:12px">
+      ${searching ? `<button type="button" class="inline-link" data-f="clear-search" style="margin:10px 2px 0;text-decoration:none">‹ Back to recent</button>` : `<div class="segmented segmented--full" role="group" aria-label="List" style="margin-top:12px">
         <button type="button" data-f="add-tab" data-t="recent" aria-pressed="${fa.tab === 'recent'}">Recent</button>
         <button type="button" data-f="add-tab" data-t="own" aria-pressed="${fa.tab === 'own'}">My foods</button>
       </div>`}
       <div style="margin-top:12px">${list}</div>
       <button type="button" class="button" data-f="new-product" style="margin-top:14px">+ Create a food</button>
-      <p class="hint" style="text-align:center;margin-top:10px">Search and barcodes: Open Food Facts.</p>`;
+      <p class="hint" style="text-align:center;margin-top:10px">Basic foods: ${NEVO_CREDIT}.<br>Products and barcodes: Open Food Facts.</p>`;
   }
   async function runSearch(q) {
     q = q.trim();
     if (!q) return;
-    Object.assign(fa, { q, busy: true, err: '', results: null });
+    const words = fold(q).split(/\s+/).filter(Boolean);
+    // Saved foods that match come first, then basic foods (NEVO, instant), then branded products (Open Food Facts)
+    const mine = Object.values(F().products).filter((p) => { const h = fold(p.name + ' ' + (p.brand || '')); return words.every((w) => h.includes(w)); });
+    let nevo = [];
+    try { nevo = (await searchNevo(q)).filter((p) => !F().products[p.id]); } catch { /* offline before first load */ }
+    resultCache = new Map(nevo.map((p) => [p.id, p]));
+    Object.assign(fa, { q, busy: true, err: '', results: null, mine, nevo });
     renderAdd();
     try {
       const res = await searchOFF(q);
-      resultCache = new Map(res.map((p) => [p.id, p]));
-      // Own and saved products that match come first
-      const nq = q.toLowerCase();
-      const mine = Object.values(F().products).filter((p) => (p.name + ' ' + (p.brand || '')).toLowerCase().includes(nq));
-      fa.results = [...mine, ...res.filter((p) => !F().products[p.id])];
+      if (fa.q !== q) return;
+      for (const p of res) resultCache.set(p.id, p);
+      fa.results = res.filter((p) => !F().products[p.id]);
     } catch (e) {
+      if (fa.q !== q) return;
       fa.err = e.message === 'offline'
-        ? 'Search needs an internet connection. Your saved foods are under Recent and My foods.'
-        : 'The Open Food Facts search is busy right now. Try again in a moment, or scan the barcode (that works more reliably).';
+        ? 'Branded products need an internet connection.'
+        : 'Open Food Facts is busy right now, so branded products are missing. Try again in a moment, or scan the barcode.';
     }
     fa.busy = false;
     renderAdd();
@@ -611,7 +661,7 @@ window.GainlyFood = function (core) {
         saveSoon(); return core.render();
       }
       case 'add-tab': fa.tab = b.dataset.t; return renderAdd();
-      case 'clear-search': Object.assign(fa, { q: '', results: null, err: '', busy: false }); return renderAdd();
+      case 'clear-search': Object.assign(fa, { q: '', results: null, err: '', busy: false, nevo: null, mine: null }); return renderAdd();
       case 'scan': return openScan();
       case 'scan-find': { const v = $('#scanCode').value; if (v.replace(/\D/g, '').length >= 6) onCode(v); else toast('Type the number under the barcode'); return; }
       case 'pick-product': {

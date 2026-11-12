@@ -1367,3 +1367,5 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .meal__bar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.4s var(--ease-out); }
 .meal__bar.is-over i { background: var(--bad, #e5484d); }
 .split-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fa-sec { font: 600 13px/1.2 var(--font); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 4px 8px; }
+.fa-sec:first-child { margin-top: 4px; }
