@@ -1431,6 +1431,24 @@
   // Andere tab/venster wijzigde de data
   window.addEventListener('storage', (ev) => { if (ev.key === STORE_KEY) { state = load(); render(); } });
 
+  /* ---------------- Keyboard ---------------- */
+  // While typing, hide the bottom bars (iOS sometimes floats fixed bars above the keyboard)
+  // and expose the keyboard height as --kb so floating items can sit right above it.
+  const isTyping = (el) => el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'file', 'date', 'range', 'button', 'submit'].includes(el.type)));
+  const vv = window.visualViewport;
+  function syncKeyboard() {
+    const typing = isTyping(document.activeElement);
+    document.body.classList.toggle('kb-open', typing);
+    const kb = vv && typing ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.documentElement.style.setProperty('--kb', kb + 'px');
+  }
+  document.addEventListener('focusin', syncKeyboard);
+  document.addEventListener('focusout', () => setTimeout(syncKeyboard, 60));
+  vv?.addEventListener('resize', syncKeyboard);
+  vv?.addEventListener('scroll', syncKeyboard);
+  // Safety net: if a focus event is ever missed, the bars never stay hidden for long.
+  setInterval(() => { if (document.body.classList.contains('kb-open') !== isTyping(document.activeElement)) syncKeyboard(); }, 500);
+
   /* ---------------- Start ---------------- */
   // Opstartscherm weghalen zodra de uitfade-animatie klaar is (CSS verbergt het sowieso).
   const splash = $('#splash');

@@ -457,6 +457,7 @@ window.GainlyGym = function (core) {
       }
     } else restBar.hidden = true;
     document.body.classList.toggle('has-rest', !restBar.hidden);
+    if (!plateBtn.hidden && document.activeElement !== plateInput) { plateInput = null; renderPlates(); }
     if (!!a !== !!wakeLock && !wakePending) syncWakeLock();
   }
   setInterval(tick, 250);
@@ -1290,7 +1291,7 @@ window.GainlyGym = function (core) {
 
   /* ---------------- Plate calculator ---------------- */
   // Shows under a set's kg field for barbell-type exercises: which plates go on each side.
-  const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const PLATES = [20, 10, 5, 2.5, 1.25]; // the plates in the user's gym
   const PLATE_COLOR = { 25: '#C8463D', 20: '#3C6FB4', 15: '#D9B43C', 10: '#3E8A55', 5: '#E8E4DC', 2.5: '#2B2826', 1.25: '#A39B92' };
   // Bar / sled choices per kind of equipment (0 = none)
   const BAR_CHOICES = { Barbell: [20, 25, 15, 10, 0], 'EZ bar': [10, 8, 0], 'Smith machine': [11, 15, 20, 0] };
@@ -1313,7 +1314,7 @@ window.GainlyGym = function (core) {
     const bar = barFor(ex);
     const { side, list, rest } = platesFor(total || 0, bar);
     const maxH = 64;
-    const plates = list.map((p) => `<span class="plate" style="--c:${PLATE_COLOR[p]};height:${Math.round(maxH * (0.38 + 0.62 * (p / 25)))}px;width:${p >= 10 ? 12 : p >= 2.5 ? 9 : 7}px" title="${fmtKg(p)} kg"></span>`).join('');
+    const plates = list.map((p) => `<span class="plate" style="--c:${PLATE_COLOR[p]};height:${Math.round(maxH * (0.38 + 0.62 * (p / 20)))}px;width:${p >= 10 ? 12 : p >= 2.5 ? 9 : 7}px" title="${fmtKg(p)} kg"></span>`).join('');
     const counts = [];
     for (const p of PLATES) { const n = list.filter((x) => x === p).length; if (n) counts.push(n > 1 ? `${n}×${fmtKg(p)}` : fmtKg(p)); }
     return `<div class="plates" data-ex="${esc(ex.id)}">
@@ -1323,25 +1324,37 @@ window.GainlyGym = function (core) {
       <div class="plates__bars" role="group" aria-label="Bar weight"><span>${isPlateMachine(ex) ? 'Sled' : 'Bar'}</span>${barOptions(ex).map((b) => `<button type="button" class="chip" data-g="bar" data-b="${b}" aria-pressed="${b === bar}">${b ? `${b} kg` : 'None'}</button>`).join('')}</div>
     </div>`;
   }
-  function showPlates(input) {
-    const row = input.closest('.set-row');
-    const a = act(); if (!row || !a) return;
-    const it = a.items[+row.dataset.i]; const ex = exById(it.exId);
-    document.querySelectorAll('.plates').forEach((el) => { if (el.previousElementSibling !== row) el.remove(); });
-    if (!plateEquip(ex)) return;
-    const v = parseNum(input.value);
-    const total = v != null && !Number.isNaN(v) ? v : parseNum(input.placeholder);
-    let box = row.nextElementSibling;
-    const html = platesHTML(ex, Number.isFinite(total) ? total : 0);
-    if (box && box.classList.contains('plates')) box.outerHTML = html; else row.insertAdjacentHTML('afterend', html);
+  // A small "Plates" button floats above the keyboard while you type kg for a plate exercise;
+  // tapping it opens the calculator just above the keyboard.
+  const plateBtn = $('#plateBtn'), platePanel = $('#platePanel');
+  let plateInput = null, plateOpen = false;
+  function plateContext() {
+    const row = plateInput && plateInput.closest('.set-row');
+    const a = act();
+    if (!row || !a || !document.contains(plateInput)) return null;
+    const it = a.items[+row.dataset.i];
+    return it ? exById(it.exId) : null;
   }
+  function renderPlates() {
+    const ex = plateContext();
+    const show = !!ex && plateEquip(ex) && document.activeElement === plateInput;
+    plateBtn.hidden = !show;
+    platePanel.hidden = !(show && plateOpen);
+    plateBtn.setAttribute('aria-expanded', String(show && plateOpen));
+    if (!show || !plateOpen) return;
+    const v = parseNum(plateInput.value);
+    const total = v != null && !Number.isNaN(v) ? v : parseNum(plateInput.placeholder);
+    platePanel.innerHTML = platesHTML(ex, Number.isFinite(total) ? total : 0);
+  }
+  function showPlates(input) { plateInput = input; renderPlates(); }
   document.addEventListener('focusin', (ev) => { if (ev.target.matches?.('.set-row [data-gin="w"]')) showPlates(ev.target); });
   document.addEventListener('focusout', (ev) => {
     if (!ev.target.matches?.('.set-row [data-gin="w"]')) return;
-    setTimeout(() => { if (!document.activeElement?.matches?.('.set-row [data-gin="w"]')) document.querySelectorAll('.plates').forEach((el) => el.remove()); }, 150);
+    setTimeout(() => { if (!document.activeElement?.matches?.('.set-row [data-gin="w"]')) { plateInput = null; renderPlates(); } }, 120);
   });
-  // Tapping the bar buttons must not close the keyboard
-  document.addEventListener('pointerdown', (ev) => { if (ev.target.closest('.plates')) ev.preventDefault(); });
+  // Tapping the button or the panel must not close the keyboard
+  document.addEventListener('pointerdown', (ev) => { if (ev.target.closest('#plateBtn, #platePanel')) ev.preventDefault(); });
+  plateBtn.addEventListener('click', () => { plateOpen = !plateOpen; renderPlates(); });
 
   /* ---------------- Events ---------------- */
   const act = () => G().active;
@@ -1412,8 +1425,7 @@ window.GainlyGym = function (core) {
         const box = b.closest('.plates'); const g0 = G();
         g0.bars = { ...(g0.bars || {}), [box.dataset.ex]: Number(b.dataset.b) };
         saveSoon();
-        const input = box.previousElementSibling?.querySelector('[data-gin="w"]');
-        if (input) showPlates(input);
+        renderPlates();
         return;
       }
       case 'reorder': openMenus.clear(); return openReorder();
