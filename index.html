@@ -208,6 +208,15 @@
     </div>
   </dialog>
 
+  <!-- Bevestigen -->
+  <dialog class="confirm" id="confirmDlg" aria-labelledby="confirmMsg">
+    <p class="confirm__msg" id="confirmMsg"></p>
+    <div class="button-row">
+      <button type="button" class="button" data-ans="0">Cancel</button>
+      <button type="button" class="button button--danger" data-ans="1" id="confirmOk">OK</button>
+    </div>
+  </dialog>
+
   <div class="update" id="updateBanner" role="status" hidden>
     <p><strong>New version available.</strong> Your data stays safe; a restore point is made first.</p>
     <div class="update__actions">

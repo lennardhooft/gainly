@@ -1079,14 +1079,23 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 /* Eerste foto bepaalt de hoogte (geen witte balken), de tweede ligt erbovenop */
 .ex-visual img { display: block; width: 100%; height: auto; }
 .ex-visual .ex-visual__end { position: absolute; inset: 0; height: 100%; object-fit: cover; }
+.ex-visual img:first-child { animation: ex-flip-a 2.4s steps(1) infinite; }
 .ex-visual__end { animation: ex-flip 2.4s steps(1) infinite; }
 @keyframes ex-flip { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
+@keyframes ex-flip-a { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
 .ex-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .ex-facts div { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
 .ex-facts span { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
 .ex-howto { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
 .ex-howto summary { font-weight: 600; cursor: pointer; }
 .ex-howto ol { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+
+/* In-app confirm (native confirm() can be blocked on iPhone) */
+.confirm { width: min(100% - 32px, 360px); margin: auto; padding: 22px 18px 16px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px var(--shadow); }
+.confirm[open] { animation: pop-in 0.3s var(--ease-out); }
+.confirm::backdrop { background: var(--scrim); animation: fade-in 0.2s; }
+.confirm__msg { font-size: 16px; line-height: 1.45; text-align: center; margin-bottom: 18px; }
+.confirm .button-row .button { min-height: 46px; }
 
 /* Schema-editor */
 .r-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; padding: 12px 14px; align-items: center; }

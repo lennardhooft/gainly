@@ -1002,7 +1002,7 @@
     viewer.showModal();
   }
   $('#viewerDelete').addEventListener('click', async () => {
-    if (!viewing || !confirm(`Delete ${poseLabel(viewing.pose).toLowerCase()} photo from ${fmtDate(viewing.date)}? This can’t be undone.`)) return;
+    if (!viewing || !await ask(`Delete ${poseLabel(viewing.pose).toLowerCase()} photo from ${fmtDate(viewing.date)}? This can’t be undone.`, 'Delete')) return;
     try {
       await PhotoDB.del(viewing.id);
       photos = photos.filter((p) => p !== viewing);
@@ -1187,8 +1187,8 @@
     syncMilestones(true);
   });
 
-  $('#measureDelete').addEventListener('click', () => {
-    if (!editingEntry || !confirm(`Delete the measurement from ${fmtDate(editingEntry.date)}?`)) return;
+  $('#measureDelete').addEventListener('click', async () => {
+    if (!editingEntry || !await ask(`Delete the measurement from ${fmtDate(editingEntry.date)}?`, 'Delete')) return;
     state.entries = state.entries.filter((e) => e !== editingEntry);
     save({ allowEmpty: true });
     measureSheet.close();
@@ -1234,7 +1234,7 @@
       const { photos: incoming, ...rest } = data;
       const pics = Array.isArray(incoming) ? incoming.filter((p) => p && p.id && p.date && p.pose && typeof p.data === 'string') : [];
       const next = normalize(rest);
-      if (!confirm(`Import backup with ${plural(next.entries.length, 'measurement', 'measurements')}${next.gym && next.gym.workouts ? ` and ${plural(next.gym.workouts.length, 'workout', 'workouts')}` : ''}${pics.length ? ` and ${pics.length} photos` : ''}? This replaces your current data${pics.length ? '; photos are added' : ''}.`)) return;
+      if (!await ask(`Import backup with ${plural(next.entries.length, 'measurement', 'measurements')}${next.gym && next.gym.workouts ? ` and ${plural(next.gym.workouts.length, 'workout', 'workouts')}` : ''}${pics.length ? ` and ${pics.length} photos` : ''}? This replaces your current data${pics.length ? '; photos are added' : ''}.`, 'Import')) return;
       snapshot('restore');
       state = next;
       applyTheme();
@@ -1276,7 +1276,7 @@
   }
 
   /* ---------------- Events ---------------- */
-  document.addEventListener('click', (ev) => {
+  document.addEventListener('click', async (ev) => {
     const t = ev.target.closest('button, [data-tab-go]');
     if (!t) return;
     if (t.id === 'bodyTab') return go(BODY_VIEWS.includes(ui.view) ? ui.view : 'overview');
@@ -1302,7 +1302,7 @@
     }
     if (t.dataset.restore) {
       const x = snapshots()[Number(t.dataset.restore)];
-      if (!x || !confirm(`Restore data from ${fmtDate(x.day)} (${plural(x.count, 'measurement', 'measurements')})? Your current data becomes a restore point first.`)) return;
+      if (!x || !await ask(`Restore data from ${fmtDate(x.day)} (${plural(x.count, 'measurement', 'measurements')})? Your current data becomes a restore point first.`, 'Restore')) return;
       snapshot('restore');
       state = normalize(x.data); save({ allowEmpty: true }); applyTheme(); syncMilestones(false); toast('Restored'); return go('overview');
     }
@@ -1318,10 +1318,10 @@
       case 'export-photos': return exportData(true);
       case 'import': return $('#importFile').click();
       case 'demo':
-        if (state.entries.length && !confirm('Demo data replaces your current measurements. Continue?')) return;
+        if (state.entries.length && !await ask('Demo data replaces your current measurements. Continue?', 'Continue')) return;
         snapshot('restore'); state = demoData(); save(); syncMilestones(false); toast('Demo data loaded'); return go('overview');
       case 'wipe': {
-        if (!confirm(`Permanently erase all measurements, workouts${photos.length ? ' and photos' : ''}? Make a backup first if you’re unsure.`)) return;
+        if (!await ask(`Permanently erase all measurements, workouts${photos.length ? ' and photos' : ''}? Make a backup first if you’re unsure.`, 'Erase')) return;
         snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true }); // ook trainingen
         PhotoDB.clear().catch(() => {});
         photos.forEach((p) => dropUrl(p.id)); photos = [];
@@ -1380,6 +1380,25 @@
     if (ui.view === 'photos') openPhotoSheet(); else openMeasure();
   });
 
+  // Own confirm dialog: iOS may silently block the browser's built-in dialogs in home-screen apps.
+  const confirmDlg = $('#confirmDlg');
+  let confirmResolve = null;
+  function ask(msg, ok = 'OK') {
+    $('#confirmMsg').textContent = msg;
+    $('#confirmOk').textContent = ok;
+    if (confirmDlg.open) confirmDlg.close();
+    confirmDlg.showModal();
+    return new Promise((res) => { confirmResolve = res; });
+  }
+  confirmDlg.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-ans]');
+    if (!b && ev.target !== confirmDlg) return;
+    const r = confirmResolve; confirmResolve = null;
+    confirmDlg.close();
+    r?.(!!b && b.dataset.ans === '1');
+  });
+  confirmDlg.addEventListener('cancel', () => { const r = confirmResolve; confirmResolve = null; r?.(false); });
+
   let toastTimer;
   function toast(msg) {
     const el = $('#toast');
@@ -1412,7 +1431,7 @@
   if (window.GainlyGym) {
     gym = window.GainlyGym({
       get state() { return state; }, save, toast, render, go, ui, $, esc, fmt, fmtSigned, fmtDate, fmtShort, toDate, toISO,
-      todayISO, addDays, daysBetween, parseNum, uid, plural, chev, lineChart, emptyState, viewEl, DF_WEEKDAY, snapshot,
+      todayISO, addDays, daysBetween, parseNum, uid, plural, chev, lineChart, emptyState, viewEl, DF_WEEKDAY, snapshot, ask,
     });
     Object.assign(RENDER, gym.views);
     Object.assign(TITLES, gym.titles);

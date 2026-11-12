@@ -292,9 +292,9 @@ window.GainlyGym = function (core) {
   /* ---------------- Start / finish a workout ---------------- */
   const blankSets = (n, types) => (types ? types.map((t) => (t ? { t } : {})) : Array.from({ length: Math.max(1, n || 3) }, () => ({})));
 
-  function startWorkout({ name = 'Workout', items = [], routineId = null } = {}) {
+  async function startWorkout({ name = 'Workout', items = [], routineId = null } = {}) {
     const g = G();
-    if (g.active && !confirm('A workout is already running. Discard it and start a new one?')) return;
+    if (g.active && !await core.ask('A workout is already running. Discard it and start a new one?', 'Discard')) return;
     g.active = {
       id: uid(), name, start: Date.now(), routineId, note: '',
       items: items.map((it) => ({ exId: it.exId, rest: it.rest ?? 90, sets: blankSets(it.n, it.types) })),
@@ -304,17 +304,17 @@ window.GainlyGym = function (core) {
     core.go('gym');
   }
 
-  function finishWorkout() {
+  async function finishWorkout() {
     const g = G();
     const a = g.active;
     if (!a) return;
     const done = a.items.reduce((n, it) => n + it.sets.filter((st) => st.d).length, 0);
     if (!done) {
-      if (confirm('You haven’t ticked off any sets yet. Discard this workout?')) { g.active = null; saveNow(); core.render(); }
+      if (await core.ask('You haven’t ticked off any sets yet. Discard this workout?', 'Discard')) { g.active = null; saveNow(); core.render(); }
       return;
     }
     const open = a.items.reduce((n, it) => n + it.sets.filter((st) => !st.d).length, 0);
-    if (open && !confirm(`${plural(open, 'set isn’t', 'sets aren’t')} ticked off and won’t be saved. Finish the workout?`)) return;
+    if (open && !await core.ask(`${plural(open, 'set isn’t', 'sets aren’t')} ticked off and won’t be saved. Finish the workout?`, 'Finish')) return;
     const wk = {
       id: a.id, name: (a.name || 'Workout').trim() || 'Workout', start: a.start, end: Date.now(), routineId: a.routineId || null, note: a.note || '',
       items: a.items.map((it) => ({ exId: it.exId, sets: it.sets.filter((st) => st.d).map(({ d, ...st }) => st) })).filter((it) => it.sets.length),
@@ -422,11 +422,7 @@ window.GainlyGym = function (core) {
     }).join('');
     const menu = openMenus.has(i) ? `<div class="ex-menu">
         <label class="ex-menu__rest">Rest timer <select data-gin="rest">${REST_OPTS.map((s) => `<option value="${s}" ${s === (it.rest ?? 90) ? 'selected' : ''}>${restText(s)}</option>`).join('')}</select></label>
-        <div class="ex-menu__row">
-          <button type="button" class="button" data-g="ex-up" ${i ? '' : 'disabled'}>↑ Up</button>
-          <button type="button" class="button" data-g="ex-down">↓ Down</button>
-          <button type="button" class="button button--danger" data-g="ex-del">Remove</button>
-        </div>
+        <button type="button" class="button button--danger" data-g="ex-del">Remove exercise</button>
       </div>` : '';
     return `<div class="card ex-card" data-i="${i}">
       <div class="ex-card__head">
@@ -900,7 +896,7 @@ window.GainlyGym = function (core) {
       }
       const fresh = [...map.values()].filter((w) => !g.workouts.some((x) => Math.abs(x.start - w.start) < 60000));
       if (!fresh.length) { g.custom = g.custom.filter((c) => !created.includes(c)); toast(map.size ? 'All of these workouts are already here' : 'No workouts found in this file'); return; }
-      if (!confirm(`Import ${plural(fresh.length, 'workout', 'workouts')} from Hevy${created.length ? ` (${plural(created.length, 'new custom exercise', 'new custom exercises')})` : ''}?`)) { g.custom = g.custom.filter((c) => !created.includes(c)); return; }
+      if (!await core.ask(`Import ${plural(fresh.length, 'workout', 'workouts')} from Hevy${created.length ? ` (${plural(created.length, 'new custom exercise', 'new custom exercises')})` : ''}?`, 'Import')) { g.custom = g.custom.filter((c) => !created.includes(c)); return; }
       core.snapshot('restore');
       g.workouts.push(...fresh.sort((a, b) => a.start - b.start));
       // Work out records afterwards, in order
@@ -918,7 +914,7 @@ window.GainlyGym = function (core) {
   const rowOf = (el) => { const r = el.closest('.set-row'); return r ? { i: +r.dataset.i, j: +r.dataset.j } : null; };
   const cardOf = (el) => +el.closest('.ex-card')?.dataset.i;
 
-  document.addEventListener('click', (ev) => {
+  document.addEventListener('click', async (ev) => {
     const b = ev.target.closest('[data-g]');
     if (!b) return;
     const g = G();
@@ -967,23 +963,16 @@ window.GainlyGym = function (core) {
       }
       case 'add-set': { a.items[cardOf(b)].sets.push({}); saveSoon(); core.render(); return; }
       case 'ex-menu': { const i = cardOf(b); if (openMenus.has(i)) openMenus.delete(i); else openMenus.add(i); core.render(); return; }
-      case 'ex-up': case 'ex-down': {
-        const i = cardOf(b), j = b.dataset.g === 'ex-up' ? i - 1 : i + 1;
-        if (j < 0 || j >= a.items.length) return;
-        [a.items[i], a.items[j]] = [a.items[j], a.items[i]];
-        openMenus.clear(); saveSoon(); core.render();
-        return;
-      }
       case 'ex-del': {
         const i = cardOf(b);
-        if (!confirm(`Remove ${exById(a.items[i].exId).name} from this workout?`)) return;
+        if (!await core.ask(`Remove ${exById(a.items[i].exId).name} from this workout?`, 'Remove')) return;
         a.items.splice(i, 1); openMenus.clear(); saveNow(); core.render();
         return;
       }
       case 'ex-info': return openExercise(b.dataset.ex);
       case 'finish': return finishWorkout();
       case 'cancel':
-        if (!confirm('Discard this workout? Nothing you entered will be saved.')) return;
+        if (!await core.ask('Discard this workout? Nothing you entered will be saved.', 'Discard')) return;
         g.active = null; openMenus.clear(); saveNow(); core.render(); return;
       case 'rest-minus': if (a && a.restEnd) { a.restEnd -= 15000; a.restTotal = Math.max(15, (a.restTotal || 90) - 15); saveSoon(); tick(); } return;
       case 'rest-plus': if (a && a.restEnd) { a.restEnd += 15000; a.restTotal = (a.restTotal || 90) + 15; saveSoon(); tick(); } return;
@@ -1002,7 +991,7 @@ window.GainlyGym = function (core) {
       }
       case 'del-workout': {
         const w = g.workouts.find((x) => x.id === wkOpen); if (!w) return;
-        if (!confirm(`Delete workout “${w.name}” from ${fmtDate(dayOf(w.start))}?`)) return;
+        if (!await core.ask(`Delete workout “${w.name}” from ${fmtDate(dayOf(w.start))}?`, 'Delete')) return;
         g.workouts = g.workouts.filter((x) => x !== w);
         saveNow(); workoutSheet.close(); toast('Workout deleted'); core.render();
         return;
@@ -1011,7 +1000,7 @@ window.GainlyGym = function (core) {
       case 'del-custom': {
         const used = g.workouts.some((w) => w.items.some((it) => it.exId === exOpen)) || g.routines.some((r) => r.items.some((it) => it.exId === exOpen)) || a?.items.some((it) => it.exId === exOpen);
         if (used) { toast('This exercise is still used in workouts or routines'); return; }
-        if (!confirm('Delete this custom exercise?')) return;
+        if (!await core.ask('Delete this custom exercise?', 'Delete')) return;
         g.custom = g.custom.filter((c) => c.id !== exOpen);
         saveNow(); exSheet.close(); core.render();
         return;
@@ -1052,7 +1041,7 @@ window.GainlyGym = function (core) {
       case 'r-del': draft.items.splice(+b.closest('.r-item').dataset.i, 1); return renderRoutine();
       case 'r-save': return saveRoutine();
       case 'r-delete':
-        if (!confirm(`Delete routine “${draft.name}”? Your finished workouts stay saved.`)) return;
+        if (!await core.ask(`Delete routine “${draft.name}”? Your finished workouts stay saved.`, 'Delete')) return;
         g.routines = g.routines.filter((r) => r.id !== draft.id);
         saveNow(); routineSheet.close(); toast('Routine deleted'); core.render();
         return;
