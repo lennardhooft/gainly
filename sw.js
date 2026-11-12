@@ -1,8 +1,8 @@
 // Offline-cache voor de app. Een nieuwe versie (andere VERSION) wordt op de achtergrond klaargezet,
 // maar pas actief als de gebruiker in de app op "Bijwerken" tikt. Gegevens (localStorage) raakt dit nooit aan.
-const VERSION = 'gainly-v14';
+const VERSION = 'gainly-v15';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/logo.webp'];
+  'icons/gainly-192.png', 'icons/gainly-512.png', 'icons/gainly-180.png', 'icons/logo.webp'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
