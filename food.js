@@ -10,6 +10,7 @@ window.GainlyFood = function (core) {
   const { $, esc, fmt, fmtShort, fmtDate, toISO, todayISO, addDays, parseNum, uid, plural, chev, viewEl, toast, ui, DF_WEEKDAY } = core;
 
   const MEALS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snacks']];
+  const DEFAULT_SPLIT = { breakfast: 25, lunch: 35, dinner: 30, snack: 10 };
   const DEFAULT_GOALS = { kcal: 2000, mode: 'pct', protein: 30, carbs: 40, fat: 30, water: 2500, waterStep: 250, container: 'glass' };
 
   const F = () => {
@@ -20,6 +21,8 @@ window.GainlyFood = function (core) {
     if (!f.products || typeof f.products !== 'object') f.products = {};
     if (!f.goals || typeof f.goals !== 'object') f.goals = {};
     for (const k in DEFAULT_GOALS) if (f.goals[k] == null) f.goals[k] = DEFAULT_GOALS[k];
+    if (!f.goals.split || typeof f.goals.split !== 'object') f.goals.split = { ...DEFAULT_SPLIT };
+    for (const k in DEFAULT_SPLIT) if (typeof f.goals.split[k] !== 'number') f.goals.split[k] = DEFAULT_SPLIT[k];
     return f;
   };
   const dayOf = (iso) => {
@@ -97,6 +100,12 @@ window.GainlyFood = function (core) {
     const g = F().goals;
     if (g.mode === 'g') return { kcal: g.kcal, protein: g.protein, carbs: g.carbs, fat: g.fat };
     return { kcal: g.kcal, protein: (g.kcal * g.protein / 100) / 4, carbs: (g.kcal * g.carbs / 100) / 4, fat: (g.kcal * g.fat / 100) / 9 };
+  }
+
+  // recommended kcal per meal, from the daily goal and the meal split
+  function mealTarget(key) {
+    const g = F().goals, sp = g.split, tot = Math.max(1, MEALS.reduce((a, [k]) => a + (sp[k] || 0), 0));
+    return Math.round(g.kcal * (sp[key] || 0) / tot);
   }
 
   /* ---------------- Open Food Facts ---------------- */
@@ -203,11 +212,13 @@ window.GainlyFood = function (core) {
     const list = d.meals[key];
     const sum = sumN(list).n;
     const open = fui.open.has(key);
+    const target = mealTarget(key), eaten = Math.round(sum.kcal || 0);
     return `<div class="card meal${open ? ' is-open' : ''}">
       <button type="button" class="meal__head" data-f="toggle-meal" data-meal="${key}" aria-expanded="${open}">
         <span class="meal__name">${label}</span>
-        <span class="meal__kcal">${Math.round(sum.kcal || 0)} kcal</span>
+        <span class="meal__kcal">${Math.round(sum.kcal || 0)}<small> / ${target} kcal</small></span>
         <span class="meal__macros">${macroLine(sum)}</span>
+        <span class="meal__bar${eaten > target * 1.1 && target ? ' is-over' : ''}" aria-hidden="true"><i style="width:${target ? Math.min(100, (eaten / target) * 100) : 0}%"></i></span>
         <svg class="meal__chev" viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1.5 5 5 5-5"/></svg>
       </button>
       ${open ? `
@@ -552,6 +563,17 @@ window.GainlyFood = function (core) {
           : `Macros give ${Math.round(macroKcal)} kcal (${pctSum}% of your goal)`}</p>
       </div>
       <div class="card">
+        <h2 class="card__title" style="margin-bottom:4px">Calories per meal</h2>
+        <p class="hint" style="margin:0 0 12px">How your daily calories are spread over the day. Each meal shows its recommended amount in the diary.</p>
+        <div class="macro-grid split-grid">
+          ${MEALS.map(([k, label]) => `<label class="field macro-field"><span class="field__label">${label} <small>%</small></span>
+            <input data-fin="split-${k}" inputmode="numeric" value="${g.split[k]}">
+            <span class="macro-field__sub split-sub">${mealTarget(k)} kcal</span></label>`).join('')}
+        </div>
+        ${(() => { const t = MEALS.reduce((a, [k]) => a + g.split[k], 0); return `<p class="macro-check split-check${t !== 100 ? ' is-off' : ''}">${t === 100 ? '✓ Adds up to 100%' : `Adds up to ${t}%: the kcal above are scaled to 100%`}</p>`; })()}
+        <button type="button" class="button" data-f="split-reset" style="width:100%;margin-top:8px">Reset to 25 / 35 / 30 / 10</button>
+      </div>
+      <div class="card">
         <h2 class="card__title" style="margin-bottom:12px">Water</h2>
         <label class="field"><span class="field__label">Daily goal <small>ml</small></span><input data-fin="goal-water" inputmode="numeric" value="${g.water}"></label>
         <span class="field__label" style="display:block;margin-bottom:6px">One tap adds</span>
@@ -631,6 +653,7 @@ window.GainlyFood = function (core) {
         }
         saveNow(); return renderGoals();
       }
+      case 'split-reset': F().goals.split = { ...DEFAULT_SPLIT }; saveNow(); return renderGoals();
       case 'water-step': F().goals.waterStep = +b.dataset.ml; saveNow(); return renderGoals();
       case 'water-cont': F().goals.container = b.dataset.c; saveNow(); return renderGoals();
     }
@@ -654,18 +677,25 @@ window.GainlyFood = function (core) {
       else { const n = parseNum(t.value); if (!Number.isNaN(n)) { if (n == null) delete fp.n[k.slice(2)]; else fp.n[k.slice(2)] = n; } }
       return;
     }
-    if (k.startsWith('goal-')) {
+    if (k.startsWith('split-')) {
       const n = parseNum(t.value);
       if (n == null || Number.isNaN(n) || n < 0) return;
-      F().goals[k.slice(5)] = n;
+      F().goals.split[k.slice(6)] = Math.round(n);
       saveSoon();
+    }
+    if (k.startsWith('goal-') || k.startsWith('split-')) {
+      const n = parseNum(t.value);
+      if (n == null || Number.isNaN(n) || n < 0) return;
+      if (k.startsWith('goal-')) { F().goals[k.slice(5)] = n; saveSoon(); }
       // update the computed hints in place, so the field keeps focus and the keyboard stays put
       const tmp = document.createElement('div'); tmp.innerHTML = goalsHTML();
       const view = viewEl('foodGoals');
       const fresh = tmp.querySelectorAll('.macro-field__sub'), cur = view.querySelectorAll('.macro-field__sub');
       cur.forEach((el, i) => { if (fresh[i]) el.textContent = fresh[i].textContent; });
-      const fc = tmp.querySelector('.macro-check'), cc = view.querySelector('.macro-check');
-      if (fc && cc) { cc.textContent = fc.textContent; cc.className = fc.className; }
+      for (const sel of ['.macro-check:not(.split-check)', '.split-check']) {
+        const fc = tmp.querySelector(sel), cc = view.querySelector(sel);
+        if (fc && cc) { cc.textContent = fc.textContent; cc.className = fc.className; }
+      }
     }
   });
 

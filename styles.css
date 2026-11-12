@@ -1359,3 +1359,11 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Recommended kcal per meal */
+.meal__head { grid-template-areas: "name kcal chev" "mac mac chev" "bar bar bar"; }
+.meal__kcal small { font-weight: 500; color: var(--muted); font-size: 13px; }
+.meal__bar { grid-area: bar; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 8px; }
+.meal__bar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.4s var(--ease-out); }
+.meal__bar.is-over i { background: var(--bad, #e5484d); }
+.split-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
