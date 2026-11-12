@@ -680,27 +680,26 @@ window.GainlyGym = function (core) {
       default: return [];
     }
   }
-  function exFiltered() {
-    return filteredExercises(exUi.q, '').filter((e) => (!exUi.eq.size || exUi.eq.has(equipOf(e))) && (!exUi.mu.size || musclesOf(e).some((m) => exUi.mu.has(m))));
-  }
-  function filtersHTML() {
+  const matchFilters = (st) => (e) => (!st.eq.size || st.eq.has(equipOf(e))) && (!st.mu.size || musclesOf(e).some((m) => st.mu.has(m)));
+  function exFiltered(st = exUi) { return filteredExercises(st.q, '').filter(matchFilters(st)); }
+  function filtersHTML(st = exUi, scope = 'ex') {
     const all = exAll();
     const eqCount = new Map(), muCount = new Map();
     for (const e of all) {
       eqCount.set(equipOf(e), (eqCount.get(equipOf(e)) || 0) + 1);
       for (const m of new Set(musclesOf(e))) muCount.set(m, (muCount.get(m) || 0) + 1);
     }
-    const btn = (f, label, set) => `<button type="button" class="filter-btn${set.size ? ' is-active' : ''}" data-g="ex-filter" data-f="${f}" aria-expanded="${exUi.open === f}">
+    const btn = (f, label, set) => `<button type="button" class="filter-btn${set.size ? ' is-active' : ''}" data-g="f-toggle" data-scope="${scope}" data-f="${f}" aria-expanded="${st.open === f}">
         ${label}${set.size ? ` <span class="filter-btn__n">${set.size}</span>` : ''}<svg viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1.5 5 5 5-5"/></svg></button>`;
-    const opts = exUi.open === 'eq'
+    const opts = st.open === 'eq'
       ? EQUIP.filter((k) => eqCount.get(k)).map((k) => [k, k, eqCount.get(k)])
-      : exUi.open === 'mu' ? MUSCLES.filter(([k]) => muCount.get(k)).map(([k, l]) => [k, l, muCount.get(k)]) : [];
-    const set = exUi.open === 'eq' ? exUi.eq : exUi.mu;
+      : st.open === 'mu' ? MUSCLES.filter(([k]) => muCount.get(k)).map(([k, l]) => [k, l, muCount.get(k)]) : [];
+    const set = st.open === 'eq' ? st.eq : st.mu;
     return `<div class="filters">
-        ${btn('eq', 'Equipment', exUi.eq)}${btn('mu', 'Muscles', exUi.mu)}
-        ${exUi.eq.size || exUi.mu.size ? '<button type="button" class="inline-link filters__clear" data-g="ex-clear">Clear</button>' : ''}
+        ${btn('eq', 'Equipment', st.eq)}${btn('mu', 'Muscles', st.mu)}
+        ${st.eq.size || st.mu.size ? `<button type="button" class="inline-link filters__clear" data-g="f-clear" data-scope="${scope}">Clear</button>` : ''}
       </div>
-      ${exUi.open ? `<div class="filter-panel">${opts.map(([k, l, c]) => `<button type="button" class="chip" data-g="ex-fchip" data-f="${exUi.open}" data-v="${esc(k)}" aria-pressed="${set.has(k)}">${esc(l)} <span class="chip__n">${c}</span></button>`).join('')}</div>` : ''}`;
+      ${st.open ? `<div class="filter-panel">${opts.map(([k, l, c]) => `<button type="button" class="chip" data-g="f-chip" data-scope="${scope}" data-f="${st.open}" data-v="${esc(k)}" aria-pressed="${set.has(k)}">${esc(l)} <span class="chip__n">${c}</span></button>`).join('')}</div>` : ''}`;
   }
   function exStats(exId) {
     const sessions = [];
@@ -773,22 +772,7 @@ window.GainlyGym = function (core) {
     const info = infoOf(ex);
     const ses = exStats(exOpen);
     $('#exSheetTitle').textContent = ex.name;
-    let stats = '';
-    if (ses.length && ex.type === 'kg') {
-      const all = ses.flatMap((s) => s.sets);
-      const b = bestOf(all);
-      const bestSetVol = Math.max(0, ...all.map(setVol));
-      stats = `<div class="stats" style="margin-bottom:14px">
-        <div class="stat"><span class="stat__label">Heaviest</span><span class="stat__value">${fmtKg(b.kg)} kg</span></div>
-        <div class="stat"><span class="stat__label">Est. 1RM</span><span class="stat__value">${fmtKg(Math.round(b.e * 10) / 10)} kg</span></div>
-        <div class="stat"><span class="stat__label">Best set</span><span class="stat__value">${fmtVol(bestSetVol)} kg</span></div>
-      </div>`;
-    } else if (ses.length) {
-      stats = `<div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:14px">
-        <div class="stat"><span class="stat__label">Times done</span><span class="stat__value">${ses.length}</span></div>
-        <div class="stat"><span class="stat__label">Best</span><span class="stat__value">${ex.type === 'time' ? clock(Math.max(...ses.flatMap((s) => s.sets.map((st) => st.s || 0)))) : `${Math.max(...ses.flatMap((s) => s.sets.map((st) => st.r || 0)))} reps`}</span></div>
-      </div>`;
-    }
+    const recs = ses.length ? recordsHTML(ex, ses) : '';
     const custom = G().custom.some((c) => c.id === ex.id);
     const visual = ex.img ? `<div class="ex-visual${isDrawn(ex) ? ' is-drawn' : ''}"><img src="${imgUrl(ex, 0)}" alt="${esc(ex.name)}: start position"><img class="ex-visual__end" src="${imgUrl(ex, 1)}" alt="${esc(ex.name)}: end position"></div>` : '';
     const muscles = info ? `<div class="ex-facts">
@@ -803,20 +787,61 @@ window.GainlyGym = function (core) {
       <p class="eyebrow" style="margin-bottom:12px">${ex.group} · ${TYPES[ex.type] || ''}</p>
       ${muscles}
       ${howto}
-      ${ses.length ? `${stats}
+      ${ses.length ? `
         ${ex.type === 'kg' ? `<div class="segmented segmented--full" role="group" aria-label="Chart" style="margin-bottom:10px">
           <button type="button" data-g="ex-chart" data-k="e1rm" aria-pressed="${exChart === 'e1rm'}">Est. 1RM</button>
           <button type="button" data-g="ex-chart" data-k="kg" aria-pressed="${exChart === 'kg'}">Heaviest</button>
           <button type="button" data-g="ex-chart" data-k="vol" aria-pressed="${exChart === 'vol'}">Volume</button>
         </div><div class="chart" id="exChart"></div>` : ''}
-        <h3 class="section-title" style="margin:16px 0 8px">History</h3>
-        ${[...ses].reverse().slice(0, 15).map((s) => `<div class="ex-hist">
-          <div class="ex-hist__head"><span>${esc(DF_WEEKDAY.format(new Date(s.w.start)))}</span><span>${esc(s.w.name)}</span></div>
-          ${s.sets.map((st, k) => `<div class="ex-hist__set"><span class="ex-hist__n">${TYPE_LABEL[st.t] || k + 1}</span>${esc(setText(ex, st))}${ex.type === 'kg' && isWork(st) && st.r ? `<span class="ex-hist__e">1RM ≈ ${fmtKg(Math.round(e1rm(st.w, st.r)))}</span>` : ''}</div>`).join('')}
-        </div>`).join('')}`
+        ${recs}`
         : '<p class="prose" style="margin-top:12px">You haven’t done this exercise yet. Once you tick it off in a workout, your records and a chart show up here.</p>'}
       ${custom ? `<button type="button" class="button button--danger" data-g="del-custom" style="margin-top:16px">Delete custom exercise</button>` : ''}`;
   }
+  // Personal records like Hevy: best weight, 1RM, set and session volume, plus the heaviest weight per number of reps.
+  function recordsHTML(ex, ses) {
+    const day = (w) => fmtShort(dayOf(w.start));
+    const rows = [];
+    const row = (label, value, w) => rows.push(`<div class="pr-row"><span>${label}</span><strong>${value}</strong>${w ? `<small>${day(w)}</small>` : ''}</div>`);
+    const work = ses.flatMap((x) => x.sets.filter(isWork).map((st) => ({ st, w: x.w })));
+    const maxBy = (arr, f) => arr.reduce((best, it) => (f(it) > (best ? f(best) : -Infinity) ? it : best), null);
+    let setTable = '';
+    if (ex.type === 'kg') {
+      const heavy = maxBy(work.filter((x) => x.st.w > 0 && x.st.r > 0), (x) => x.st.w);
+      const orm = maxBy(work.filter((x) => x.st.w > 0 && x.st.r > 0), (x) => e1rm(x.st.w, x.st.r));
+      const vol = maxBy(work.filter((x) => x.st.w > 0 && x.st.r > 0), (x) => x.st.w * x.st.r);
+      const sess = maxBy(ses, (x) => x.sets.reduce((a, st) => a + setVol(st), 0));
+      if (heavy) row('Heaviest weight', `${fmtKg(heavy.st.w)} kg`, heavy.w);
+      if (orm) row('Best 1RM (est.)', `${fmtKg(Math.round(e1rm(orm.st.w, orm.st.r) * 10) / 10)} kg`, orm.w);
+      if (vol) row('Best set volume', `${fmtKg(vol.st.w)} kg × ${vol.st.r}`, vol.w);
+      if (sess) row('Best session volume', `${fmtVol(sess.sets.reduce((a, st) => a + setVol(st), 0))} kg`, sess.w);
+      const byReps = new Map();
+      for (const x of work) {
+        if (!(x.st.w > 0 && x.st.r > 0)) continue;
+        const cur = byReps.get(x.st.r);
+        if (!cur || x.st.w > cur.st.w) byReps.set(x.st.r, x);
+      }
+      const reps = [...byReps.keys()].sort((a, b) => a - b);
+      if (reps.length) setTable = `<details class="pr-sets" open><summary>Set records</summary>
+        <div class="pr-sets__head"><span>Reps</span><span>Personal best</span><span></span></div>
+        ${reps.map((r) => { const x = byReps.get(r); return `<div class="pr-sets__row"><span>${r}</span><strong>${fmtKg(x.st.w)} kg</strong><small>${day(x.w)}</small></div>`; }).join('')}
+      </details>`;
+    } else if (ex.type === 'bw') {
+      const most = maxBy(work, (x) => x.st.r || 0);
+      const extra = maxBy(work.filter((x) => x.st.w > 0), (x) => x.st.w);
+      const sess = maxBy(ses, (x) => x.sets.filter(isWork).reduce((a, st) => a + (st.r || 0), 0));
+      if (most && most.st.r) row('Most reps (one set)', `${most.st.r} reps`, most.w);
+      if (extra) row('Heaviest extra weight', `+${fmtKg(extra.st.w)} kg × ${extra.st.r}`, extra.w);
+      if (sess) row('Most reps (one session)', `${sess.sets.filter(isWork).reduce((a, st) => a + (st.r || 0), 0)} reps`, sess.w);
+    } else {
+      const longest = maxBy(work, (x) => x.st.s || 0);
+      const sess = maxBy(ses, (x) => x.sets.reduce((a, st) => a + (st.s || 0), 0));
+      if (longest && longest.st.s) row('Longest set', clock(longest.st.s), longest.w);
+      if (sess) row('Most time (one session)', clock(sess.sets.reduce((a, st) => a + (st.s || 0), 0)), sess.w);
+    }
+    row('Times done', String(ses.length));
+    return `<div class="pr-card"><h3 class="pr-card__title">🏅 Personal records</h3>${rows.join('')}${setTable}</div>`;
+  }
+
   function drawExChart() {
     const el = $('#exChart');
     if (!el) return;
@@ -831,9 +856,9 @@ window.GainlyGym = function (core) {
 
   /* ---------------- Sheet: pick exercises ---------------- */
   const picker = $('#exPicker');
-  const pk = { q: '', group: '', sel: [], onDone: null, form: false, shown: 60 };
+  const pk = { q: '', group: '', sel: [], onDone: null, form: false, shown: 60, eq: new Set(), mu: new Set(), open: null };
   function openPicker(onDone) {
-    Object.assign(pk, { q: '', group: '', sel: [], onDone, form: false, shown: 60 });
+    Object.assign(pk, { q: '', group: '', sel: [], onDone, form: false, shown: 60, eq: new Set(), mu: new Set(), open: null });
     renderPicker();
     picker.showModal();
   }
@@ -850,9 +875,9 @@ window.GainlyGym = function (core) {
       <span class="pick__n" aria-hidden="true">${on ? pk.sel.indexOf(e.id) + 1 : ''}</span></button>`;
   }
   function renderPickerList() {
-    const all = filteredExercises(pk.q, pk.group);
+    const all = exFiltered(pk);
     const list = all.slice(0, pk.shown);
-    const recent = !pk.q && !pk.group ? recentIds().map(exById) : [];
+    const recent = !pk.q && !pk.eq.size && !pk.mu.size ? recentIds().map(exById) : [];
     $('#pickList').innerHTML = (recent.length ? `<h3 class="section-title" style="margin:6px 0 8px">Recent</h3><div class="pick-list">${recent.map(pickRow).join('')}</div><h3 class="section-title" style="margin:16px 0 8px">All exercises · ${all.length}</h3>` : '')
       + (list.length ? `<div class="pick-list">${list.map(pickRow).join('')}</div>` : '<p class="hint" style="text-align:center;padding:20px 0">Nothing found. Create a custom exercise below.</p>')
       + (all.length > list.length ? `<button type="button" class="button" data-g="pick-more" style="margin-top:10px">Show more (${all.length - list.length})</button>` : '');
@@ -861,7 +886,7 @@ window.GainlyGym = function (core) {
   function renderPicker() {
     $('#pickBody').innerHTML = pk.form ? customFormHTML() : `
       <input class="search" type="search" data-gin="pick-q" placeholder="Search exercises" value="${esc(pk.q)}" aria-label="Search exercises">
-      ${chipsHTML(pk.group, 'pick-group')}
+      <div id="pickFilters">${filtersHTML(pk, 'pick')}</div>
       <div id="pickList"></div>
       <button type="button" class="button" data-g="new-custom" style="margin-top:14px">+ Create custom exercise</button>`;
     if (!pk.form) renderPickerList();
@@ -1231,13 +1256,17 @@ window.GainlyGym = function (core) {
         saveNow(); exSheet.close(); core.render();
         return;
       }
-      case 'ex-filter': exUi.open = exUi.open === b.dataset.f ? null : b.dataset.f; $('#exFilters').innerHTML = filtersHTML(); return;
-      case 'ex-fchip': {
-        const set = b.dataset.f === 'eq' ? exUi.eq : exUi.mu;
-        if (set.has(b.dataset.v)) set.delete(b.dataset.v); else set.add(b.dataset.v);
-        exUi.shown = 60; $('#exFilters').innerHTML = filtersHTML(); $('#exList').innerHTML = exListItems(); return;
+      case 'f-toggle': case 'f-chip': case 'f-clear': {
+        const pick = b.dataset.scope === 'pick';
+        const st = pick ? pk : exUi;
+        if (b.dataset.g === 'f-toggle') st.open = st.open === b.dataset.f ? null : b.dataset.f;
+        else if (b.dataset.g === 'f-clear') { st.eq.clear(); st.mu.clear(); st.open = null; }
+        else { const set = b.dataset.f === 'eq' ? st.eq : st.mu; if (set.has(b.dataset.v)) set.delete(b.dataset.v); else set.add(b.dataset.v); }
+        st.shown = 60;
+        if (pick) { $('#pickFilters').innerHTML = filtersHTML(pk, 'pick'); renderPickerList(); }
+        else { $('#exFilters').innerHTML = filtersHTML(); $('#exList').innerHTML = exListItems(); }
+        return;
       }
-      case 'ex-clear': exUi.eq.clear(); exUi.mu.clear(); exUi.open = null; exUi.shown = 60; $('#exFilters').innerHTML = filtersHTML(); $('#exList').innerHTML = exListItems(); return;
       case 'ex-more': exUi.shown += 100; $('#exList').innerHTML = exListItems(); return;
       case 'pick-group': pk.group = b.dataset.group; pk.shown = 60; return renderPicker();
       case 'pick-more': pk.shown += 100; return renderPickerList();
