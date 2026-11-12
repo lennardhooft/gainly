@@ -7,7 +7,6 @@
   // dir: -1 = lager is beter, 1 = hoger is beter, 0 = neutraal
   const METRICS = [
     { key: 'weight',    label: 'Gewicht',        unit: 'kg', dir: -1, group: 'Lichaam' },
-    { key: 'muscle',    label: 'Spiermassa',     unit: 'kg', dir: 1,  group: 'Lichaam' },
     { key: 'neck',      label: 'Nek',            unit: 'cm', dir: 0,  group: 'Omtrek' },
     { key: 'shoulders', label: 'Schouders',      unit: 'cm', dir: 1,  group: 'Omtrek' },
     { key: 'chest',     label: 'Borst',          unit: 'cm', dir: 0,  group: 'Omtrek' },
