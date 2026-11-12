@@ -156,10 +156,17 @@
   }
   function lastValue(key) { const s = series(key); return s.length ? s[s.length - 1] : null; }
 
+  // Doel bepaalt welke richting 'goed' is: cutten = kleiner, bulken = groter (taille liefst stabiel).
+  const isBulk = () => state.settings.goalType === 'bulk';
+  const BULK_DIR = { weight: 1, neck: 0, shoulders: 1, chest: 1, waist: -1, belly: 0, hips: 0, armL: 1, armR: 1, forearmL: 1, forearmR: 1, thighL: 1, thighR: 1, calfL: 1, calfR: 1 };
+  const dirOf = (m) => (m.key && isBulk() ? BULK_DIR[m.key] ?? m.dir : m.dir);
+  const TAPE_TOTAL = () => ({ dir: isBulk() ? 0 : -1, unit: 'cm' });
+
   function trend(m, d) {
     if (d == null || Math.abs(d) < 0.05) return 'flat';
-    if (!m.dir) return 'neutral';
-    return Math.sign(d) === m.dir ? 'good' : 'bad';
+    const dir = dirOf(m);
+    if (!dir) return 'neutral';
+    return Math.sign(d) === dir ? 'good' : 'bad';
   }
   function deltaHTML(m, d, digits = 1, withUnit = true) {
     if (d == null) return '<span class="delta delta--flat">—</span>';
@@ -407,43 +414,65 @@
     const w = series('weight');
     if (w.length > 1) {
       const start = w[0].value;
+      const bulk = isBulk();
       const hit = new Set();
       for (const p of w) for (const k of MS_KG) {
-        if (hit.has(k) || start - p.value < k - 1e-9) continue;
+        const moved = bulk ? p.value - start : start - p.value;
+        if (hit.has(k) || moved < k - 1e-9) continue;
         hit.add(k);
-        out.push({ id: 'kg' + k, date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg minder dan bij je eerste meting.` });
+        out.push(bulk
+          ? { id: 'gkg' + k, date: p.date, icon: '💪', title: `+${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg meer dan bij je eerste meting.` }
+          : { id: 'kg' + k, date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg minder dan bij je eerste meting.` });
       }
       const g = state.settings.goalWeight;
-      if (g && g < start) {
-        const p = w.find((x) => x.value <= g + 0.05);
+      if (g && (bulk ? g > start : g < start)) {
+        const p = w.find((x) => (bulk ? x.value >= g - 0.05 : x.value <= g + 0.05));
         if (p) out.push({ id: 'goal' + g, date: p.date, icon: '🏆', title: 'Doel bereikt', text: `Je hebt je streefgewicht van ${fmt(g)} kg gehaald.` });
       }
     }
-    const wa = series('waist');
-    if (wa.length > 1) {
-      const hit = new Set();
-      for (const p of wa) for (const k of MS_WAIST) {
-        if (hit.has(k) || wa[0].value - p.value < k - 1e-9) continue;
-        hit.add(k);
-        out.push({ id: 'waist' + k, date: p.date, icon: '📏', title: `Taille −${k} cm`, text: `Je taille is ${k} cm smaller dan bij de start.` });
-      }
+    if (isBulk()) {
+      // Bulken: groei van armen en borst
+      const grow = (key, steps, icon, label) => {
+        const sr = series(key);
+        if (sr.length < 2) return;
+        const hit = new Set();
+        for (const p of sr) for (const k of steps) {
+          if (hit.has(k) || p.value - sr[0].value < k - 1e-9) continue;
+          hit.add(k);
+          out.push({ id: key + '+' + k, date: p.date, icon, title: `${label} +${k} cm`, text: `Je ${label.toLowerCase()} is ${k} cm groter dan bij de start.` });
+        }
+      };
+      grow('armR', [1, 2, 3, 4, 5], '💪', 'Bovenarm');
+      grow('chest', [3, 5, 10, 15], '🏋️', 'Borst');
+      grow('shoulders', [3, 5, 10, 15], '🏋️', 'Schouders');
     }
     const entries = entriesAsc();
-    const firsts = {}, cur = {}, hit = new Set();
-    for (const e of entries) {
-      for (const m of TAPE) {
-        const v = e.values[m.key];
-        if (v == null) continue;
-        if (!(m.key in firsts)) firsts[m.key] = v;
-        cur[m.key] = v;
+    if (!isBulk()) { // taille- en omtrekmijlpalen alleen bij afvallen
+      const wa = series('waist');
+      if (wa.length > 1) {
+        const hit = new Set();
+        for (const p of wa) for (const k of MS_WAIST) {
+          if (hit.has(k) || wa[0].value - p.value < k - 1e-9) continue;
+          hit.add(k);
+          out.push({ id: 'waist' + k, date: p.date, icon: '📏', title: `Taille −${k} cm`, text: `Je taille is ${k} cm smaller dan bij de start.` });
+        }
       }
-      const keys = Object.keys(firsts);
-      if (keys.length < 2) continue;
-      const lost = keys.reduce((sum, k) => sum + firsts[k] - cur[k], 0);
-      for (const k of MS_TAPE) {
-        if (hit.has(k) || lost < k - 1e-9) continue;
-        hit.add(k);
-        out.push({ id: 'tape' + k, date: e.date, icon: '🎯', title: `−${k} cm omtrek`, text: `Al je omtrekken samen zijn ${k} cm kleiner dan bij de start.` });
+      const firsts = {}, cur = {}, hit = new Set();
+      for (const e of entries) {
+        for (const m of TAPE) {
+          const v = e.values[m.key];
+          if (v == null) continue;
+          if (!(m.key in firsts)) firsts[m.key] = v;
+          cur[m.key] = v;
+        }
+        const keys = Object.keys(firsts);
+        if (keys.length < 2) continue;
+        const lost = keys.reduce((sum, k) => sum + firsts[k] - cur[k], 0);
+        for (const k of MS_TAPE) {
+          if (hit.has(k) || lost < k - 1e-9) continue;
+          hit.add(k);
+          out.push({ id: 'tape' + k, date: e.date, icon: '🎯', title: `−${k} cm omtrek`, text: `Al je omtrekken samen zijn ${k} cm kleiner dan bij de start.` });
+        }
       }
     }
     for (const n of MS_COUNT) {
@@ -548,9 +577,9 @@
       <div class="compare-head">
         <div class="stat"><span class="stat__label">Periode</span><span class="stat__value">${plural(Math.abs(days), 'dag', 'dagen')}</span></div>
         <div class="stat"><span class="stat__label">Gewicht</span><span class="stat__value">${wa && wb ? deltaHTML(M.weight, wb.value - wa.value) : '—'}</span></div>
-        <div class="stat"><span class="stat__label">${perWeek != null ? 'Per week' : 'Omtrek'}</span><span class="stat__value">${perWeek != null ? deltaHTML(M.weight, perWeek, 2) : tapeCount ? deltaHTML({ dir: -1, unit: 'cm' }, tapeDelta) : '—'}</span></div>
+        <div class="stat"><span class="stat__label">${perWeek != null ? 'Per week' : 'Omtrek'}</span><span class="stat__value">${perWeek != null ? deltaHTML(M.weight, perWeek, 2) : tapeCount ? deltaHTML(TAPE_TOTAL(), tapeDelta) : '—'}</span></div>
       </div>
-      ${perWeek != null && tapeCount ? `<div class="stat"><span class="stat__label">Totale omtrek (${plural(tapeCount, 'maat', 'maten')})</span><span class="stat__value">${deltaHTML({ dir: -1, unit: 'cm' }, tapeDelta)}</span></div>` : ''}
+      ${perWeek != null && tapeCount ? `<div class="stat"><span class="stat__label">Totale omtrek (${plural(tapeCount, 'maat', 'maten')})</span><span class="stat__value">${deltaHTML(TAPE_TOTAL(), tapeDelta)}</span></div>` : ''}
       ${bodyHTML(A, B)}
       <div class="card">
         <table class="table">
@@ -630,20 +659,21 @@
   /* ---------------- Thema ---------------- */
   // Elk thema is één tint (OKLCH-hue): achtergrond, vlakken, randen, tekst en accent worden er allemaal van afgeleid (styles.css).
   const ACCENTS = [
-    { key: 'blauw', label: 'Blauw', hue: 262 },
-    { key: 'mint', label: 'Mint', hue: 178 },
-    { key: 'lime', label: 'Lime', hue: 128 },
-    { key: 'oranje', label: 'Oranje', hue: 50 },
-    { key: 'roze', label: 'Roze', hue: 355 },
-    { key: 'paars', label: 'Paars', hue: 300 },
+    { key: 'leisteen', label: 'Leisteen' },
+    { key: 'zand', label: 'Zand' },
   ];
   const MODES = [{ key: 'system', label: 'Automatisch' }, { key: 'dark', label: 'Donker' }, { key: 'light', label: 'Licht' }];
-  const themeOf = () => ({ mode: 'system', accent: 'blauw', ...(state.settings.theme || {}) });
+  const themeOf = () => {
+    const t = { mode: 'dark', accent: 'leisteen', ...(state.settings.theme || {}) };
+    if (!ACCENTS.some((a) => a.key === t.accent)) t.accent = 'leisteen'; // oude kleurthema's bestaan niet meer
+    if (!MODES.some((m) => m.key === t.mode)) t.mode = 'dark';
+    return t;
+  };
   function applyTheme() {
     const t = themeOf();
     const root = document.documentElement;
     root.dataset.accent = t.accent;
-    if (t.mode === 'system') delete root.dataset.mode; else root.dataset.mode = t.mode;
+    root.dataset.mode = t.mode;
     try { localStorage.setItem('gainly:theme', JSON.stringify(t)); } catch { /* ok */ }
     for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', toHex(getComputedStyle(document.body).backgroundColor));
   }
@@ -664,7 +694,7 @@
         ${MODES.map((m) => `<button type="button" data-mode="${m.key}" aria-pressed="${m.key === t.mode}">${m.label}</button>`).join('')}
       </div>
       <div class="swatches" role="group" aria-label="Accentkleur">
-        ${ACCENTS.map((a) => `<button type="button" class="swatch" data-accent="${a.key}" aria-pressed="${a.key === t.accent}" style="--sw-h:${a.hue}">
+        ${ACCENTS.map((a) => `<button type="button" class="swatch" data-accent="${a.key}" aria-pressed="${a.key === t.accent}">
           <span class="swatch__dot" aria-hidden="true"></span><span class="swatch__label">${a.label}</span></button>`).join('')}
       </div>
     </div>`;
@@ -696,6 +726,11 @@
     el.innerHTML = `
       <form class="card" id="settingsForm" novalidate>
         <h2 class="card__title" style="margin-bottom:14px">Profiel</h2>
+        <span class="field__label" style="display:block;margin-bottom:6px">Doel</span>
+        <div class="segmented segmented--full" role="group" aria-label="Doel" style="margin-bottom:14px">
+          <button type="button" data-goal-type="cut" aria-pressed="${!isBulk()}">Afvallen (cutten)</button>
+          <button type="button" data-goal-type="bulk" aria-pressed="${isBulk()}">Bijkomen (bulken)</button>
+        </div>
         <div class="field-grid">
           <label class="field"><span class="field__label">Lengte <small>cm</small></span><input name="height" inputmode="decimal" value="${s.height ? fmt(s.height, 0) : ''}" placeholder="180"></label>
           <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
@@ -1205,6 +1240,12 @@
     if (t.id === 'bodyTab') return go(BODY_VIEWS.includes(ui.view) ? ui.view : 'overview');
     if (t.dataset.tab) return go(t.dataset.tab);
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
+    if (t.dataset.goalType) {
+      state.settings = { ...state.settings, goalType: t.dataset.goalType };
+      save(); syncMilestones(false);
+      toast(t.dataset.goalType === 'bulk' ? 'Doel: bijkomen. Groei kleurt nu groen.' : 'Doel: afvallen. Kleiner kleurt nu groen.');
+      return render();
+    }
     if (t.dataset.mode) return setTheme({ mode: t.dataset.mode });
     if (t.dataset.accent) return setTheme({ accent: t.dataset.accent });
     if (t.dataset.range) { ui.range = t.dataset.range; return render(); }

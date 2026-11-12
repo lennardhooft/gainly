@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Gainly</title>
   <meta name="description" content="Volg je gewicht en lichaamsmaten.">
-  <meta name="theme-color" content="#0e1117">
+  <meta name="theme-color" content="#141312">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,7 +16,7 @@
   <script>
     try { const t = JSON.parse(localStorage.getItem('gainly:theme')) || {};
       if (t.accent) document.documentElement.dataset.accent = t.accent;
-      if (t.mode && t.mode !== 'system') document.documentElement.dataset.mode = t.mode; } catch (e) {}
+      if (t.mode) document.documentElement.dataset.mode = t.mode; } catch (e) {}
   </script>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
