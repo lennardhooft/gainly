@@ -20,6 +20,7 @@ window.GainlyFood = function (core) {
     if (!f.days || typeof f.days !== 'object') f.days = {};
     if (!f.products || typeof f.products !== 'object') f.products = {};
     if (!f.favs || typeof f.favs !== 'object') f.favs = {};
+    if (!f.saved || typeof f.saved !== 'object') f.saved = {};
     if (!f.goals || typeof f.goals !== 'object') f.goals = {};
     for (const k in DEFAULT_GOALS) if (f.goals[k] == null) f.goals[k] = DEFAULT_GOALS[k];
     if (!f.goals.split || typeof f.goals.split !== 'object') f.goals.split = { ...DEFAULT_SPLIT };
@@ -310,7 +311,10 @@ window.GainlyFood = function (core) {
         <div class="meal__nutr">
           ${['protein', 'carbs', 'sugars', 'fat', 'satfat', 'fiber', 'salt'].map((k) => `<span><b>${nfmt(sum[k] || 0, 'g')} g</b> ${NK[k].sub ? NK[k].l.replace('of which ', '') : NK[k].l.toLowerCase()}</span>`).join('')}
         </div>` : '<p class="hint" style="margin:4px 0 8px">Nothing logged yet.</p>'}
-        <button type="button" class="ex-card__add" data-f="add-food" data-meal="${key}">+ Add food</button>` : ''}
+        <div class="meal__actions">
+          <button type="button" class="ex-card__add" data-f="add-food" data-meal="${key}">+ Add food</button>
+          ${list.length ? `<button type="button" class="ex-card__add" data-f="meal-to-saved" data-meal="${key}">Save as meal</button>` : ''}
+        </div>` : ''}
     </div>`;
   }
 
@@ -451,9 +455,9 @@ window.GainlyFood = function (core) {
     }
     return [...seen.keys()].map(productOf).filter((p) => p.n);
   }
-  function openAdd(meal) {
-    Object.assign(fa, { meal, q: '', results: null, busy: false, err: '', tab: 'recent', nevo: null, mine: null });
-    $('#foodAddTitle').textContent = `Add to ${MEALS.find(([k]) => k === meal)[1]}`;
+  function openAdd(meal, { builder = false } = {}) {
+    Object.assign(fa, { meal, builder, q: '', results: null, busy: false, err: '', tab: 'recent', nevo: null, mine: null });
+    $('#foodAddTitle').textContent = builder ? `Add to ${mb.name.trim() || 'meal'}` : `Add to ${MEALS.find(([k]) => k === meal)[1]}`;
     $('#foodAddBody').innerHTML = '';
     renderAdd();
     addSheet.showModal();
@@ -484,14 +488,22 @@ window.GainlyFood = function (core) {
       else if (!mine.length && !nevo.length && fa.results && !fa.results.length) list = hint('Nothing found. Try other words, scan the barcode, or create the food yourself.');
       else list = parts.join('') + `<h3 class="fa-sec">Products</h3>${off}`;
     } else {
+      const hintP = (t) => `<p class="hint" style="text-align:center;padding:20px 0">${t}</p>`;
       const favs = Object.entries(F().favs).sort((a, b) => b[1].at - a[1].at).map(([pid]) => productOf(pid));
       const src = fa.tab === 'own' ? own : fa.tab === 'favs' ? favs : recentProducts();
-      list = src.length ? `<div class="list">${src.map(prodRow).join('')}</div>` : `<p class="hint" style="text-align:center;padding:20px 0">${fa.tab === 'own' ? 'Foods you create yourself show up here.' : fa.tab === 'favs' ? 'Tap the star on a food to add it to your favourites.' : 'Foods you log show up here, so you can add them again in one tap.'}</p>`;
+      if (fa.tab === 'meals') {
+        const sm = savedList();
+        list = sm.length ? `<div class="list">${sm.map((m) => `<button type="button" class="food-row" data-f="saved-quick" data-id="${m.id}">
+          <span class="food-thumb" aria-hidden="true"><span>${esc(m.name.charAt(0) || '?')}</span></span>
+          <span class="food-row__main"><span class="food-row__name">${esc(m.name)}</span><span class="food-row__sub">${plural(m.items.length, 'food', 'foods')} · ${nfmt(savedTotals(m).kcal || 0, 'kcal')} kcal</span></span><span class="food-row__kcal">+</span>
+        </button>`).join('')}</div>` : hintP('Save a meal from your diary or create one under Nutrition › Meals.');
+      } else list = src.length ? `<div class="list">${src.map(prodRow).join('')}</div>` : `<p class="hint" style="text-align:center;padding:20px 0">${fa.tab === 'own' ? 'Foods you create yourself show up here.' : fa.tab === 'favs' ? 'Tap the star on a food to add it to your favourites.' : 'Foods you log show up here, so you can add them again in one tap.'}</p>`;
     }
     const dyn = `
       ${searching ? `<button type="button" class="inline-link" data-f="clear-search" style="margin:10px 2px 0;text-decoration:none">‹ Back to recent</button>` : `<div class="segmented segmented--full" role="group" aria-label="List" style="margin-top:12px">
         <button type="button" data-f="add-tab" data-t="recent" aria-pressed="${fa.tab === 'recent'}">Recent</button>
         <button type="button" data-f="add-tab" data-t="favs" aria-pressed="${fa.tab === 'favs'}">Favourites</button>
+        ${fa.builder ? '' : `<button type="button" data-f="add-tab" data-t="meals" aria-pressed="${fa.tab === 'meals'}">Meals</button>`}
         <button type="button" data-f="add-tab" data-t="own" aria-pressed="${fa.tab === 'own'}">My foods</button>
       </div>`}
       <div style="margin-top:12px">${list}</div>`;
@@ -545,7 +557,7 @@ window.GainlyFood = function (core) {
   const fam = { pid: null, meal: 'breakfast', g: 100, entryId: null, iso: null };
   function openAmount({ product, meal, g, entryId = null }) {
     if (!F().products[product.id]) resultCache.set(product.id, product);
-    Object.assign(fam, { pid: product.id, meal, g: g ?? (product.serving || 100), entryId, iso: curDay() });
+    Object.assign(fam, { pid: product.id, meal, g: g ?? (product.serving || 100), entryId, iso: curDay(), builder: !!fa.builder && addSheet.open });
     renderAmount();
     amountSheet.showModal();
   }
@@ -566,14 +578,14 @@ window.GainlyFood = function (core) {
         ${p.serving ? `<button type="button" class="chip" data-f="set-g" data-g="${p.serving}">1 serving (${p.serving} g)</button>` : ''}
         ${[50, 100, 150, 200].map((x) => `<button type="button" class="chip" data-f="set-g" data-g="${x}">${x} g</button>`).join('')}
       </div>
-      <div class="segmented segmented--full" role="group" aria-label="Meal" style="margin-bottom:14px">
+      ${fam.builder ? '' : `<div class="segmented segmented--full" role="group" aria-label="Meal" style="margin-bottom:14px">
         ${MEALS.map(([k, l]) => `<button type="button" data-f="set-meal" data-meal="${k}" aria-pressed="${fam.meal === k}">${l}</button>`).join('')}
-      </div>
+      </div>`}
       <div class="fa-kcal"><strong id="faKcal">${Math.round(n.kcal || 0)}</strong> kcal</div>
       <div class="fa-macros" id="faMacros">${['protein', 'carbs', 'fat'].map((k) => `<div><span>${NK[k].l}</span><strong>${nfmt(n[k] || 0, 'g')} g</strong></div>`).join('')}</div>
       <div class="nut-table" id="faTable" style="margin-top:10px">${['sugars', 'fiber', 'satfat', 'salt'].map((k) => `<div class="nut-row is-compact"><span class="nut-row__name">${NK[k].sub ? NK[k].l.replace('of which ', '') : NK[k].l}</span><span class="nut-row__val">${n[k] != null ? nfmt(n[k], 'g') + ' g' : '—'}</span></div>`).join('')}</div>
       ${canShare(p) ? `<button type="button" class="button" data-f="share-off" style="margin-top:12px;width:100%">Share on Open Food Facts</button>` : ''}
-      <button type="button" class="button button--primary" data-f="save-entry" style="margin-top:16px">${fam.entryId ? 'Save' : 'Add to ' + MEALS.find(([k]) => k === fam.meal)[1]}</button>
+      <button type="button" class="button button--primary" data-f="save-entry" style="margin-top:16px">${fam.builder ? 'Add to meal' : fam.entryId ? 'Save' : 'Add to ' + MEALS.find(([k]) => k === fam.meal)[1]}</button>
       <div class="button-row" style="margin-top:10px">
         <button type="button" class="button" data-f="edit-product">Edit food values</button>
         ${fam.entryId ? '<button type="button" class="button button--danger" data-f="del-entry">Remove</button>' : '<span></span>'}
@@ -591,6 +603,12 @@ window.GainlyFood = function (core) {
     const f = F();
     const p = pendingProduct();
     if (!f.products[p.id]) f.products[p.id] = p;
+    if (fam.builder) {
+      mb.items.push({ pid: p.id, g: fam.g });
+      saveNow(); amountSheet.close(); if (addSheet.open) addSheet.close();
+      renderMealBuilder(); toast(`${p.name} added`);
+      return;
+    }
     const d = dayOf(fam.iso);
     if (fam.entryId) {
       for (const [k] of MEALS) d.meals[k] = d.meals[k].filter((e) => e.id !== fam.entryId);
@@ -835,9 +853,73 @@ window.GainlyFood = function (core) {
       </button>`).join('')}</div>`).join('')}
       <p class="hint" style="text-align:center">Tap a food to add it to ${esc(fmtDayShort())}. Change its type or remove it with the star.</p>`;
   }
-  const fmtDayShort = () => { const d = curDay(); return d === todayISO() ? 'today' : fmtDate(d); };
+  const fmtDayShort = () => { const d = curDay(), l = dayLabel(d); return /^(Today|Yesterday|Tomorrow)$/.test(l) ? l.toLowerCase() : fmtShort(d); };
+  /* ---------------- Saved meals ---------------- */
+  const savedList = () => Object.values(F().saved).sort((a, b) => a.name.localeCompare(b.name));
+  const savedTotals = (m) => sumN(m.items.map((it) => ({ pid: it.pid, g: it.g }))).n;
+  function addSavedToDay(m, meal) {
+    const d = dayOf(curDay());
+    for (const it of m.items) d.meals[meal].push({ id: uid(), pid: it.pid, g: it.g });
+    fui.open.add(meal);
+    saveNow();
+    toast(`${m.name} added to ${MEALS.find(([k]) => k === meal)[1]}`);
+  }
+  // Builder sheet: create or edit a saved meal
+  const mealSheet = $('#mealSheet');
+  const mb = { id: null, name: '', items: [] };
+  function openMealBuilder(m, prefill) {
+    Object.assign(mb, m ? { id: m.id, name: m.name, items: m.items.map((x) => ({ ...x })) } : { id: null, name: prefill?.name || '', items: prefill?.items || [] });
+    $('#mealSheetTitle').textContent = m ? 'Edit meal' : 'New meal';
+    renderMealBuilder();
+    mealSheet.showModal();
+  }
+  function renderMealBuilder() {
+    const t = sumN(mb.items).n;
+    $('#mealSheetBody').innerHTML = `
+      <label class="field"><span class="field__label">Name</span><input data-fin="mb-name" value="${esc(mb.name)}" placeholder="E.g. My standard breakfast" autocomplete="off"></label>
+      <div class="kcal-mini"><strong id="mbKcal">${nfmt(t.kcal || 0, 'kcal')}</strong> kcal <span id="mbMacros">${macroLine(t)}</span></div>
+      ${mb.items.length ? `<div class="list mb-list">${mb.items.map((it, i) => { const p = productOf(it.pid); return `<div class="mb-row">
+        ${thumb(p)}
+        <span class="food-row__main"><span class="food-row__name">${esc(p.name)}</span><span class="food-row__sub" data-mbk="${i}">${nfmt(((p.n.kcal || 0) * it.g) / 100, 'kcal')} kcal</span></span>
+        <label class="mb-g"><input data-fin="mb-g" data-i="${i}" inputmode="decimal" value="${fmt(it.g, it.g % 1 ? 1 : 0)}" aria-label="Grams of ${esc(p.name)}"><small>g</small></label>
+        <button type="button" class="mb-del" data-f="mb-del" data-i="${i}" aria-label="Remove ${esc(p.name)}">✕</button>
+      </div>`; }).join('')}</div>` : '<p class="hint" style="text-align:center;padding:16px 0">No foods yet. Add the foods that make up this meal.</p>'}
+      <button type="button" class="button" data-f="mb-add" style="width:100%;margin-top:12px">+ Add food</button>
+      ${mb.id ? '<button type="button" class="button button--danger" data-f="mb-delete" style="width:100%;margin-top:10px">Delete this meal</button>' : ''}`;
+  }
+  function updateBuilderTotals() {
+    const t = sumN(mb.items).n;
+    const k = $('#mbKcal'); if (k) k.textContent = nfmt(t.kcal || 0, 'kcal');
+    const m = $('#mbMacros'); if (m) m.textContent = macroLine(t);
+    mb.items.forEach((it, i) => { const el = mealSheet.querySelector(`[data-mbk="${i}"]`); if (el) el.textContent = `${nfmt(((productOf(it.pid).n.kcal || 0) * it.g) / 100, 'kcal')} kcal`; });
+  }
+  function saveMealBuilder() {
+    const name = mb.name.trim();
+    if (!name) { toast('Give the meal a name'); mealSheet.querySelector('[data-fin="mb-name"]')?.focus(); return; }
+    const items = mb.items.filter((it) => it.g > 0);
+    if (!items.length) { toast('Add at least one food'); return; }
+    const id = mb.id || uid();
+    F().saved[id] = { id, name, items, at: F().saved[id]?.at || Date.now() };
+    saveNow();
+    mealSheet.close();
+    toast(mb.id ? 'Meal saved' : `“${name}” saved under Meals`);
+    core.render();
+  }
+
   function renderMeals() {
-    viewEl('foodMeals').innerHTML = '<div class="card empty"><span class="soon">Coming soon</span><h2>Fixed meals</h2><p>Save meals you eat often (like your standard breakfast) and add them to your day in one tap.</p></div>';
+    const list = savedList();
+    const now = mealNow();
+    viewEl('foodMeals').innerHTML = `
+      <button type="button" class="button button--primary" data-f="mb-new" style="width:100%;margin-bottom:14px">+ Create meal</button>
+      ${list.length ? list.map((m) => { const t = savedTotals(m); return `<div class="card saved-meal">
+        <div class="saved-meal__head"><div><h2 class="saved-meal__name">${esc(m.name)}</h2><p class="saved-meal__sub">${nfmt(t.kcal || 0, 'kcal')} kcal · ${macroLine(t)}</p></div>
+          <button type="button" class="link" data-f="mb-edit" data-id="${m.id}">Edit</button></div>
+        <p class="saved-meal__items">${m.items.map((it) => `${esc(productOf(it.pid).name)} <span>${nfmt(it.g, 'g')} g</span>`).join(' · ')}</p>
+        <div class="saved-meal__use">
+          <select data-fin="sm-target" data-id="${m.id}" aria-label="Meal to add to">${MEALS.map(([k, l]) => `<option value="${k}"${k === (fui.smTarget?.[m.id] || now) ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <button type="button" class="button" data-f="saved-add" data-id="${m.id}">Add to ${esc(fmtDayShort())}</button>
+        </div>
+      </div>`; }).join('') : `<div class="card empty"><h2>No saved meals yet</h2><p>Open a meal in your diary and tap <b>Save as meal</b>, or tap <b>+ Create meal</b> to build one from scratch. Then add it to any day in one tap.</p></div>`}`;
   }
 
   /* ---------------- Events ---------------- */
@@ -876,6 +958,29 @@ window.GainlyFood = function (core) {
       case 'set-g': fam.g = +b.dataset.g; return renderAmount();
       case 'set-meal': fam.meal = b.dataset.meal; return renderAmount();
       case 'save-entry': return saveEntry();
+      case 'meal-to-saved': {
+        const key = b.dataset.meal, d = peekDay(curDay());
+        const items = (d?.meals[key] || []).map((e) => ({ pid: e.pid, g: e.g }));
+        if (!items.length) return;
+        return openMealBuilder(null, { name: `My ${MEALS.find(([k]) => k === key)[1].toLowerCase()}`, items });
+      }
+      case 'mb-new': return openMealBuilder(null);
+      case 'mb-edit': return openMealBuilder(F().saved[b.dataset.id]);
+      case 'mb-add': return openAdd('breakfast', { builder: true });
+      case 'mb-del': mb.items.splice(+b.dataset.i, 1); return renderMealBuilder();
+      case 'mb-save': return saveMealBuilder();
+      case 'mb-delete': {
+        if (!await core.ask(`Delete the meal “${mb.name}”? Your diary stays as it is.`, 'Delete')) return;
+        delete F().saved[mb.id]; saveNow(); mealSheet.close(); toast('Meal deleted'); return core.render();
+      }
+      case 'saved-add': {
+        const m = F().saved[b.dataset.id]; if (!m) return;
+        addSavedToDay(m, fui.smTarget?.[m.id] || mealNow()); return core.render();
+      }
+      case 'saved-quick': {
+        const m = F().saved[b.dataset.id]; if (!m) return;
+        addSavedToDay(m, fa.meal); addSheet.close(); return core.render();
+      }
       case 'share-off': { b.disabled = true; b.textContent = 'Sharing…'; await shareOFF(pendingProduct()); return renderAmount(); }
       case 'off-signout': if (!await core.ask('Remove your Open Food Facts account from this iPhone?', 'Remove')) return; localStorage.removeItem(OFF_KEY); return renderGoals();
       case 'fav-toggle': { toggleFav(pendingProduct()); renderAmount(); return core.render(); }
@@ -933,6 +1038,9 @@ window.GainlyFood = function (core) {
   document.addEventListener('input', (ev) => {
     const t = ev.target, k = t.dataset?.fin;
     if (!k) return;
+    if (k === 'mb-name') { mb.name = t.value; return; }
+    if (k === 'mb-g') { const n = parseNum(t.value); const it = mb.items[+t.dataset.i]; if (it && n != null && !Number.isNaN(n)) { it.g = n; updateBuilderTotals(); } return; }
+    if (k === 'sm-target') { (fui.smTarget ||= {})[t.dataset.id] = t.value; return; }
     if (k === 'fav-cat') { const v = F().favs[fam.pid]; if (v) { v.cat = t.value; saveNow(); core.render(); } return; }
     if (k === 'grams') { const n = parseNum(t.value); if (!Number.isNaN(n)) { fam.g = n; updateAmountNumbers(); } return; }
     if (k.startsWith('p-') || k.startsWith('n-')) {
@@ -967,10 +1075,11 @@ window.GainlyFood = function (core) {
   });
 
   // Close via backdrop or [data-close]; header buttons
-  for (const dlg of [summarySheet, addSheet, amountSheet, productSheet, scanSheet]) {
+  for (const dlg of [summarySheet, addSheet, amountSheet, productSheet, scanSheet, mealSheet]) {
     dlg.addEventListener('click', (ev) => { if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close(); });
   }
   $('#foodProductSave').dataset.f = 'save-product';
+  $('#mealSheetSave').dataset.f = 'mb-save';
   $('#scanFind').dataset.f = 'scan-find';
 
   return {
