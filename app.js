@@ -824,16 +824,20 @@
   const PhotoDB = (() => {
     let dbp = null;
     const open = () => (dbp ||= new Promise((res, rej) => {
-      const r = indexedDB.open('gainly-photos', 1);
-      r.onupgradeneeded = () => r.result.createObjectStore('photos', { keyPath: 'id' });
+      const r = indexedDB.open('gainly-photos', 2);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('trash')) db.createObjectStore('trash', { keyPath: 'trashId' });
+      };
       r.onsuccess = () => res(r.result);
       r.onerror = () => { dbp = null; rej(r.error); };
     }));
-    const run = async (mode, fn) => {
+    const run = async (mode, fn, store = 'photos') => {
       const db = await open();
       return new Promise((res, rej) => {
-        const tx = db.transaction('photos', mode);
-        const req = fn(tx.objectStore('photos'));
+        const tx = db.transaction(store, mode);
+        const req = fn(tx.objectStore(store));
         tx.oncomplete = () => res(req && req.result);
         tx.onerror = () => rej(tx.error);
         tx.onabort = () => rej(tx.error);
@@ -844,12 +848,27 @@
       put: (p) => run('readwrite', (s) => s.put(p)).then((r) => { if (sync) sync.photoPut(p.id); return r; }),
       del: (id) => run('readwrite', (s) => s.delete(id)).then((r) => { if (sync) sync.photoDel(id); return r; }),
       rawPut: (p) => run('readwrite', (s) => s.put(p)),
+      trashAll: () => run('readonly', (s) => s.getAll(), 'trash'),
+      trashPut: (p) => run('readwrite', (s) => s.put(p), 'trash'),
+      trashDel: (id) => run('readwrite', (s) => s.delete(id), 'trash'),
+      trashClear: () => run('readwrite', (s) => s.clear(), 'trash'),
       rawDel: (id) => run('readwrite', (s) => s.delete(id)),
       clear: () => run('readwrite', (s) => s.clear()),
     };
   })();
 
   let photos = [];
+  let trash = []; // recently deleted photos, kept on this device for BIN_DAYS
+  const BIN_DAYS = 30;
+  // Delete = move to the bin (this device), then remove from the photo list (and from the cloud copy)
+  async function trashPhoto(ph) {
+    const rec = { ...ph, trashId: `${ph.id}@${Date.now()}`, trashedAt: Date.now() };
+    await PhotoDB.trashPut(rec);
+    await PhotoDB.del(ph.id);
+    dropUrl(ph.id);
+    photos = photos.filter((x) => x !== ph && x.id !== ph.id);
+    trash.push(rec);
+  }
   let photosLoaded = false;
   const photoUrls = new Map();
   const photoUrl = (p) => {
@@ -862,6 +881,12 @@
 
   async function loadPhotos() {
     try { photos = (await PhotoDB.all()) || []; } catch { photos = []; }
+    try {
+      trash = (await PhotoDB.trashAll()) || [];
+      const old = trash.filter((x) => Date.now() - x.trashedAt > BIN_DAYS * 864e5);
+      for (const x of old) await PhotoDB.trashDel(x.trashId);
+      trash = trash.filter((x) => !old.includes(x));
+    } catch { trash = []; }
     photosLoaded = true;
     if (ui.view === 'photos' || ui.view === 'settings') render();
   }
@@ -888,7 +913,7 @@
     const el = viewEl('photos');
     if (!photosLoaded) { el.innerHTML = '<p class="hint" style="text-align:center">Loading photos…</p>'; return; }
     if (!photos.length) {
-      el.innerHTML = emptyState('Progress photos', 'Take photos from the front, side and back, each time in the same spot with the same light. They stay on this device only.', 'add-photos', 'Add first photos');
+      el.innerHTML = emptyState('Progress photos', 'Take photos from the front, side and back, each time in the same spot with the same light. They stay on this device only.', 'add-photos', 'Add first photos') + binHTML();
       return;
     }
     if (!photoDates(ui.photoPose).length) ui.photoPose = POSES.find((p) => photoDates(p.key).length).key;
@@ -948,7 +973,24 @@
             : `<button type="button" class="thumb thumb--empty" data-add-photos="${d}"><span>+ ${p.label}</span></button>`;
         }).join('')}</div>
       </div>`).join('')}
-      <p class="hint" style="text-align:center">Photos are stored on this device only. Include them in your backup via Settings.</p>`;
+      ${binHTML()}
+      <p class="hint" style="text-align:center">Photos are stored on this device${sync && sync.isOn() ? ' and in your cloud sync' : ' only. Include them in your backup via Settings'}.</p>`;
+  }
+  document.addEventListener('toggle', (ev) => { if (ev.target.classList && ev.target.classList.contains('photo-bin')) ui.binOpen = ev.target.open; }, true);
+  function binHTML() {
+    if (!trash.length) return '';
+    const list = [...trash].sort((a, b) => b.trashedAt - a.trashedAt);
+    const left = (x) => Math.max(1, BIN_DAYS - Math.floor((Date.now() - x.trashedAt) / 864e5));
+    return `<details class="card photo-bin"${ui.binOpen ? ' open' : ''}>
+      <summary data-bin-toggle>Recently deleted · ${list.length}</summary>
+      <p class="hint" style="margin:6px 0 10px">Deleted photos stay here for ${BIN_DAYS} days on this device, then they’re gone for good.</p>
+      <div class="photo-bin__grid">${list.map((x) => `<div class="photo-bin__item">
+        <img src="${photoUrl({ id: x.trashId, blob: x.blob })}" alt="${poseLabel(x.pose)} photo from ${fmtDate(x.date)}" loading="lazy">
+        <span>${poseLabel(x.pose)} · ${fmtShort(x.date)}<small>${left(x)} day${left(x) === 1 ? '' : 's'} left</small></span>
+        <div class="photo-bin__btns"><button type="button" class="button" data-bin-restore="${esc(x.trashId)}">Restore</button><button type="button" class="button button--danger" data-bin-del="${esc(x.trashId)}" aria-label="Delete forever">✕</button></div>
+      </div>`).join('')}</div>
+      <button type="button" class="button button--danger" data-bin-empty style="width:100%;margin-top:10px">Empty bin</button>
+    </details>`;
   }
 
   // Foto's toevoegen
@@ -998,10 +1040,9 @@
     if (ev.target.closest('#photoDelDay')) {
       ev.preventDefault();
       const list = POSES.map((p) => photoOf(editDate, p.key)).filter(Boolean);
-      if (!list.length || !await ask(`Delete all ${list.length === 1 ? '' : list.length + ' '}photos from ${fmtDate(editDate)}? This can’t be undone.`, 'Delete')) return;
+      if (!list.length || !await ask(`Delete all ${list.length === 1 ? '' : list.length + ' '}photos from ${fmtDate(editDate)}? They stay in Recently deleted for ${BIN_DAYS} days.`, 'Delete')) return;
       try {
-        for (const ph of list) { await PhotoDB.del(ph.id); dropUrl(ph.id); }
-        photos = photos.filter((p) => !list.includes(p));
+        for (const ph of list) await trashPhoto(ph);
         photoSheet.close(); toast(list.length > 1 ? 'Photos deleted' : 'Photo deleted'); render();
       } catch { toast('Delete failed'); }
     }
@@ -1026,13 +1067,17 @@
         if (pending[pose]) {
           const { blob, w, h } = await compressImage(pending[pose]);
           const rec = { id, date, pose, blob, w, h, t: Date.now() };
+          const replaced = photos.find((x) => x.id === id);
+          if (replaced) await trashPhoto(replaced);
           await PhotoDB.put(rec); dropUrl(id);
           photos = photos.filter((x) => x.id !== id).concat(rec);
-          if (old && old.id !== id) { await PhotoDB.del(old.id); dropUrl(old.id); photos = photos.filter((x) => x !== old); }
+          if (old && old.id !== id && photos.includes(old)) await trashPhoto(old);
         } else if (old && removed.has(pose)) {
-          await PhotoDB.del(old.id); dropUrl(old.id); photos = photos.filter((x) => x !== old);
+          await trashPhoto(old);
         } else if (old && moving) {
           const rec = { ...old, id, date };
+          const replaced = photos.find((x) => x.id === id);
+          if (replaced) await trashPhoto(replaced);
           await PhotoDB.put(rec); await PhotoDB.del(old.id);
           dropUrl(old.id); dropUrl(id);
           photos = photos.filter((x) => x !== old && x.id !== id).concat(rec);
@@ -1059,11 +1104,9 @@
     viewer.showModal();
   }
   $('#viewerDelete').addEventListener('click', async () => {
-    if (!viewing || !await ask(`Delete ${poseLabel(viewing.pose).toLowerCase()} photo from ${fmtDate(viewing.date)}? This can’t be undone.`, 'Delete')) return;
+    if (!viewing || !await ask(`Delete ${poseLabel(viewing.pose).toLowerCase()} photo from ${fmtDate(viewing.date)}? It stays in Recently deleted for ${BIN_DAYS} days.`, 'Delete')) return;
     try {
-      await PhotoDB.del(viewing.id);
-      photos = photos.filter((p) => p !== viewing);
-      dropUrl(viewing.id);
+      await trashPhoto(viewing);
       viewer.close();
       toast('Photo deleted');
       render();
@@ -1368,6 +1411,28 @@
     if (t.dataset.photoMode) { ui.photoMode = t.dataset.photoMode; return render(); }
     if (t.dataset.addPhotos) return openPhotoSheet(t.dataset.addPhotos, { edit: true });
     if (t.dataset.photo) return openViewer(t.dataset.photo);
+    if (t.dataset.binRestore) {
+      const x = trash.find((y) => y.trashId === t.dataset.binRestore); if (!x) return;
+      const cur = photos.find((p) => p.id === x.id);
+      if (cur && !await ask(`There is already a ${poseLabel(x.pose).toLowerCase()} photo on ${fmtDate(x.date)}. Swap them? The current one goes to the bin.`, 'Swap')) return;
+      try {
+        if (cur) await trashPhoto(cur);
+        const { trashId, trashedAt, ...rec } = x;
+        await PhotoDB.put(rec); await PhotoDB.trashDel(trashId);
+        dropUrl(trashId); dropUrl(rec.id);
+        trash = trash.filter((y) => y !== x); photos = photos.filter((p) => p.id !== rec.id).concat(rec);
+        toast('Photo restored'); return render();
+      } catch { toast('Restore failed'); return; }
+    }
+    if (t.dataset.binDel) {
+      const x = trash.find((y) => y.trashId === t.dataset.binDel); if (!x) return;
+      if (!await ask(`Delete this ${poseLabel(x.pose).toLowerCase()} photo from ${fmtDate(x.date)} for good? This can’t be undone.`, 'Delete')) return;
+      await PhotoDB.trashDel(x.trashId); dropUrl(x.trashId); trash = trash.filter((y) => y !== x); return render();
+    }
+    if (t.dataset.binEmpty != null) {
+      if (!await ask(`Delete all ${trash.length} photos in the bin for good? This can’t be undone.`, 'Empty bin')) return;
+      await PhotoDB.trashClear(); trash.forEach((x) => dropUrl(x.trashId)); trash = []; toast('Bin emptied'); return render();
+    }
     switch (t.dataset.action) {
       case 'add-measure': return openMeasure();
       case 'add-photos': return openPhotoSheet();
@@ -1380,7 +1445,7 @@
       case 'wipe': {
         if (!await ask(`Permanently erase all measurements, workouts${photos.length ? ' and photos' : ''}? Make a backup first if you’re unsure.`, 'Erase')) return;
         snapshot('restore'); state = { entries: [], settings: state.settings }; save({ allowEmpty: true }); // ook trainingen
-        PhotoDB.clear().catch(() => {});
+        PhotoDB.clear().catch(() => {}); PhotoDB.trashClear().catch(() => {}); trash = [];
         photos.forEach((p) => dropUrl(p.id)); photos = [];
         toast('Everything erased'); return render();
       }

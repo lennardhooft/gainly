@@ -286,6 +286,16 @@ window.GainlyFood = function (core) {
   const thumb = (p) => `<span class="food-thumb" aria-hidden="true">${p.img ? `<img src="${esc(p.img)}" alt="" loading="lazy">` : `<span>${esc((p.name || '?').charAt(0))}</span>`}</span>`;
   const macroLine = (n) => `P ${nfmt(n.protein || 0, 'g')} · C ${nfmt(n.carbs || 0, 'g')} · F ${nfmt(n.fat || 0, 'g')}`;
 
+  const prevLabel = () => (curDay() === todayISO() ? 'yesterday' : 'the day before');
+  function copyPrev(meals) {
+    const to = dayOf(curDay()), from = peekDay(addDays(curDay(), -1));
+    if (!from) return 0;
+    let n = 0;
+    for (const k of meals) for (const e of from.meals[k] || []) { to.meals[k].push({ id: uid(), pid: e.pid, g: e.g }); n++; }
+    for (const k of meals) if ((from.meals[k] || []).length) fui.open.add(k);
+    saveNow();
+    return n;
+  }
   function mealHTML(key, label, d) {
     const list = d.meals[key];
     const sum = sumN(list).n;
@@ -313,7 +323,8 @@ window.GainlyFood = function (core) {
         </div>` : '<p class="hint" style="margin:4px 0 8px">Nothing logged yet.</p>'}
         <div class="meal__actions">
           <button type="button" class="ex-card__add" data-f="add-food" data-meal="${key}">+ Add food</button>
-          ${list.length ? `<button type="button" class="ex-card__add" data-f="meal-to-saved" data-meal="${key}">Save as meal</button>` : ''}
+          ${list.length ? `<button type="button" class="ex-card__add" data-f="meal-to-saved" data-meal="${key}">Save as meal</button>`
+            : (() => { const prev = peekDay(addDays(curDay(), -1)); const n = prev ? (prev.meals[key] || []).length : 0; return n ? `<button type="button" class="ex-card__add" data-f="copy-prev" data-meal="${key}">Copy ${prevLabel()} (${n})</button>` : ''; })()}
         </div>` : ''}
     </div>`;
   }
@@ -366,6 +377,11 @@ window.GainlyFood = function (core) {
         ${(() => { const r = rateDay(iso); return `<button type="button" class="button day-sum${r && r.level ? ' rate--' + r.level : ''}" data-f="summary">${r && r.level ? `<span class="rate__dot"></span>${r.live ? 'So far: ' : ''}${RATE_LABEL[r.level]}` : 'Day summary'}</button>`; })()}
         <button type="button" class="button" data-f="stats">Week & month</button>
       </div>
+      ${(() => {
+        if (dayEntries(d).length) return '';
+        const prev = peekDay(addDays(iso, -1)); const n = prev ? dayEntries(prev).length : 0;
+        return n ? `<button type="button" class="button copy-day" data-f="copy-prev-day">Copy all of ${prevLabel()} · ${plural(n, 'food', 'foods')}</button>` : '';
+      })()}
       ${MEALS.map(([k, l]) => mealHTML(k, l, d)).join('')}
       ${waterHTML(d)}
       <p class="hint" style="text-align:center">Food data: Open Food Facts (open database).</p>`;
@@ -786,7 +802,29 @@ window.GainlyFood = function (core) {
   /* ---------------- Share own foods on Open Food Facts ---------------- */
   // The account lives in its own key on this device only: never in state, backups or exports.
   const OFF_KEY = 'gainly:off';
-  const offAccount = () => { try { const a = JSON.parse(localStorage.getItem(OFF_KEY) || 'null'); return a && a.user && a.pass ? a : null; } catch { return null; } };
+  // Only the username is kept on this iPhone; the password is asked each time you share (iOS can fill it in).
+  const offAccount = () => { try { const a = JSON.parse(localStorage.getItem(OFF_KEY) || 'null'); return a && a.user ? { user: a.user } : null; } catch { return null; } };
+  try { const a = JSON.parse(localStorage.getItem(OFF_KEY) || 'null'); if (a && a.pass) localStorage.setItem(OFF_KEY, JSON.stringify({ user: a.user })); } catch { /* ok */ }
+  function askOffPassword(user) {
+    return new Promise((resolve) => {
+      const dlg = document.createElement('dialog');
+      dlg.className = 'confirm';
+      dlg.innerHTML = `<form method="dialog" class="off-pass" autocomplete="on">
+        <p class="confirm__msg" style="margin-bottom:12px">Open Food Facts password for <b>${esc(user)}</b></p>
+        <input type="text" name="username" autocomplete="username" value="${esc(user)}" hidden readonly>
+        <input class="search" type="password" name="password" autocomplete="current-password" placeholder="Password" required>
+        <p class="hint" style="margin:8px 0 12px">Only used for this upload, not stored by Gainly.</p>
+        <div class="button-row"><button type="button" class="button" value="cancel">Cancel</button><button type="submit" class="button button--primary" value="ok">Share</button></div>
+      </form>`;
+      document.body.append(dlg);
+      const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
+      dlg.querySelector('[value="cancel"]').addEventListener('click', () => done(null));
+      dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });
+      dlg.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); const v = dlg.querySelector('[name="password"]').value; done(v || null); });
+      dlg.showModal();
+      setTimeout(() => dlg.querySelector('[name="password"]').focus(), 50);
+    });
+  }
   const validCode = (c) => /^\d{8,14}$/.test(String(c || ''));
   const canShare = (p) => p && p.src === 'own' && validCode(p.code) && !p.offShared;
   async function shareOFF(p) {
@@ -798,8 +836,10 @@ window.GainlyFood = function (core) {
       // Never overwrite someone else's product
       const ex = await fetch(`https://world.openfoodfacts.org/api/v2/product/${p.code}?fields=code,product_name`).then((r) => r.json()).catch(() => null);
       if (ex && ex.status === 1) { toast('This barcode is already on Open Food Facts'); return false; }
+      const pass = await askOffPassword(acc.user);
+      if (!pass) return false;
       const body = new URLSearchParams({
-        code: p.code, user_id: acc.user, password: acc.pass,
+        code: p.code, user_id: acc.user, password: pass,
         product_name: p.name, lc: 'nl', nutrition_data_per: '100g',
         comment: 'Added with Gainly', app_name: 'Gainly',
       });
@@ -974,13 +1014,12 @@ window.GainlyFood = function (core) {
       </div>
       <div class="card">
         <h2 class="card__title" style="margin-bottom:4px">Open Food Facts account</h2>
-        ${offAccount() ? `<p class="hint" style="margin:0 0 12px">Signed in as <b>${esc(offAccount().user)}</b>. Foods you create with a barcode can be shared on Open Food Facts.</p>
+        ${offAccount() ? `<p class="hint" style="margin:0 0 12px">Username <b>${esc(offAccount().user)}</b>. Foods you create with a barcode can be shared on Open Food Facts. Gainly asks your password each time you share and doesn’t store it.</p>
           <button type="button" class="button" data-f="off-signout" style="width:100%">Remove account</button>`
-        : `<p class="hint" style="margin:0 0 12px">Optional. With a free account from openfoodfacts.org you can add foods you create (with a barcode) to the open database. It’s stored only on this iPhone, never in backups.</p>
+        : `<p class="hint" style="margin:0 0 12px">Optional. With a free account from openfoodfacts.org you can add foods you create (with a barcode) to the open database. Gainly only keeps your username; it asks your password when you share.</p>
           <form id="offAccountForm" autocomplete="on">
             <label class="field"><span class="field__label">Username</span><input name="user" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
-            <label class="field"><span class="field__label">Password</span><input name="pass" type="password" autocomplete="current-password"></label>
-            <button type="submit" class="button" style="width:100%">Save account</button>
+            <button type="submit" class="button" style="width:100%">Save username</button>
           </form>`}
       </div>
       <p class="hint" style="text-align:center">Changes are saved right away.</p>`;
@@ -1130,6 +1169,8 @@ window.GainlyFood = function (core) {
       case 'set-g': fam.g = +b.dataset.g; return renderAmount();
       case 'set-meal': fam.meal = b.dataset.meal; return renderAmount();
       case 'save-entry': return saveEntry();
+      case 'copy-prev': { const n = copyPrev([b.dataset.meal]); toast(`Copied ${plural(n, 'food', 'foods')}`); return core.render(); }
+      case 'copy-prev-day': { const n = copyPrev(MEALS.map(([k]) => k)); toast(`Copied ${plural(n, 'food', 'foods')} from ${prevLabel()}`); return core.render(); }
       case 'meal-to-saved': {
         const key = b.dataset.meal, d = peekDay(curDay());
         const items = (d?.meals[key] || []).map((e) => ({ pid: e.pid, g: e.g }));
@@ -1197,10 +1238,10 @@ window.GainlyFood = function (core) {
   document.addEventListener('submit', (ev) => {
     if (ev.target.id === 'offAccountForm') {
       ev.preventDefault();
-      const user = ev.target.user.value.trim(), pass = ev.target.pass.value;
-      if (!user || !pass) { toast('Enter your username and password'); return; }
-      try { localStorage.setItem(OFF_KEY, JSON.stringify({ user, pass })); } catch { toast('Couldn’t save the account'); return; }
-      toast('Account saved');
+      const user = ev.target.user.value.trim();
+      if (!user) { toast('Enter your username'); return; }
+      try { localStorage.setItem(OFF_KEY, JSON.stringify({ user })); } catch { toast('Couldn’t save the account'); return; }
+      toast('Username saved');
       return renderGoals();
     }
     if (ev.target.id !== 'foodSearchForm') return;

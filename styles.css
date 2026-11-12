@@ -1476,3 +1476,15 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .sync-copy span { display: grid; gap: 2px; min-width: 0; }
 .sync-copy small { color: var(--muted); font-size: 12px; }
 .sync-copy .button { flex: none; min-height: 36px; padding: 0 14px; }
+.copy-day { width: 100%; margin-bottom: 12px; }
+.photo-bin summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.photo-bin summary::after { content: '▾'; color: var(--muted); transition: rotate 0.2s; }
+.photo-bin[open] summary::after { rotate: 180deg; }
+.photo-bin summary::-webkit-details-marker { display: none; }
+.photo-bin__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.photo-bin__item { display: grid; gap: 6px; }
+.photo-bin__item img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; opacity: 0.85; }
+.photo-bin__item span { font-size: 13px; font-weight: 600; display: grid; }
+.photo-bin__item small { color: var(--muted); font-weight: 500; font-size: 12px; }
+.photo-bin__btns { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.photo-bin__btns .button { min-height: 36px; padding: 0 12px; }

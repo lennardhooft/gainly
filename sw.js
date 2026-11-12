@@ -1,6 +1,6 @@
 // Offline-cache voor de app. Een nieuwe versie (andere VERSION) wordt op de achtergrond klaargezet,
 // maar pas actief als de gebruiker in de app op "Bijwerken" tikt. Gegevens (localStorage) raakt dit nooit aan.
-const VERSION = 'gainly-v59';
+const VERSION = 'gainly-v60';
 const SHELL = ['./', 'index.html', 'styles.css', 'gym.js', 'food.js', 'app.js', 'vendor/html5-qrcode.min.js', 'vendor/supabase.min.js', 'sync.js', 'exercises.json', 'nevo.json', 'manifest.webmanifest',
   'icons/gainly-192.png', 'icons/gainly-512.png', 'icons/gainly-180.png', 'icons/logo.webp'];
 
