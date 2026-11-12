@@ -168,7 +168,9 @@ svg { display: block; }
   margin: 0 auto;
   padding: 6px 16px calc(var(--tabbar-h) + var(--safe-bottom) + 96px);
 }
-.view { display: grid; gap: 16px; animation: view-in 0.35s var(--ease-out); }
+.view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; animation: view-in 0.35s var(--ease-out); }
+/* Lange tekst (bv. oefeningen van een schema) mag de pagina nooit breder maken dan het scherm */
+.view > * { min-width: 0; }
 @keyframes view-in { from { opacity: 0; translate: 0 6px; } }
 
 .section-title {
