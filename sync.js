@@ -208,18 +208,14 @@ window.GainlySync = function GainlySync(core) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && hasSession() && Date.now() - lastPull > 60000) syncNow(); });
   window.addEventListener('online', () => { if (hasSession()) syncNow(); });
 
-  // ---------- sign in with an e-mailed code ----------
-  const login = { step: 'email', email: '', busy: false };
-  async function sendCode(email) {
+  // ---------- sign in with e-mail + password ----------
+  const login = { busy: false, email: '' };
+  async function signIn(email, password, create) {
     await client();
-    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-    if (error) throw error;
-  }
-  async function verifyCode(email, token) {
-    await client();
-    const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
-    if (error) throw error;
-    user = data.user;
+    const r = create ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+    if (r.error) throw r.error;
+    if (!r.data.session) throw new Error('Account created, but e-mail confirmation is still switched on in Supabase.');
+    user = r.data.user;
   }
   async function signOut() {
     if (!await ask('Sign out of cloud sync on this device? Your data stays on this iPhone and online.', 'Sign out')) return;
@@ -227,7 +223,7 @@ window.GainlySync = function GainlySync(core) {
     try { localStorage.removeItem(AUTH_KEY); } catch { /* ok */ }
     user = null;
     meta = { remoteAt: null, dirty: false, lastSync: null, photoUp: [], photoDel: [], photoKnown: [] }; writeMeta();
-    Object.assign(login, { step: 'email', email: '', busy: false });
+    Object.assign(login, { email: '', busy: false });
     refreshCard(); toast('Signed out');
   }
 
@@ -251,51 +247,39 @@ window.GainlySync = function GainlySync(core) {
           <button type="button" class="button" data-sync="signout">Sign out</button>
         </div>`;
     }
-    if (login.step === 'code') {
-      return `<h2 class="card__title" style="margin-bottom:6px">Cloud sync</h2>
-        <p class="prose" style="margin-bottom:12px">We sent a code to <b>${esc(login.email)}</b>. Type it here (check your spam folder too).</p>
-        <form id="syncCodeForm" class="sync-form">
-          <label class="field"><span class="field__label">Code</span><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></label>
-          <button type="submit" class="button button--primary"${login.busy ? ' disabled' : ''}>${login.busy ? 'Checking…' : 'Sign in'}</button>
-        </form>
-        <button type="button" class="inline-link" data-sync="back" style="margin-top:10px">Use another e-mail address</button>`;
-    }
     return `<h2 class="card__title" style="margin-bottom:6px">Cloud sync</h2>
-      <p class="prose" style="margin-bottom:12px">Keep a copy of everything online, so you never lose it and can use Gainly on another device. Sign in with your e-mail: you get a code, no password needed.</p>
-      <form id="syncEmailForm" class="sync-form">
-        <label class="field"><span class="field__label">E-mail</span><input name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(login.email)}" placeholder="you@example.com"></label>
-        <button type="submit" class="button button--primary"${login.busy ? ' disabled' : ''}>${login.busy ? 'Sending…' : 'Send code'}</button>
+      <p class="prose" style="margin-bottom:12px">Keep a copy of everything online, so you never lose it and can use Gainly on another device. First time? Choose an e-mail and password and tap <b>Create account</b>.</p>
+      <form id="syncLoginForm" class="sync-form" autocomplete="on">
+        <label class="field"><span class="field__label">E-mail</span><input name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(login.email)}" placeholder="you@example.com"></label>
+        <label class="field"><span class="field__label">Password <small>at least 8 characters</small></span><input name="password" type="password" autocomplete="current-password" minlength="8"></label>
+        <div class="button-row">
+          <button type="submit" class="button button--primary" value="signin"${login.busy ? ' disabled' : ''}>${login.busy ? 'Please wait…' : 'Sign in'}</button>
+          <button type="submit" class="button" value="signup"${login.busy ? ' disabled' : ''}>Create account</button>
+        </div>
       </form>`;
   }
   function refreshCard() { const el = document.getElementById('syncCard'); if (el) el.innerHTML = cardHTML(); }
 
   document.addEventListener('submit', async (ev) => {
     const f = ev.target;
-    if (f.id === 'syncEmailForm') {
-      ev.preventDefault();
-      const email = f.email.value.trim();
-      if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter a valid e-mail address'); return; }
-      Object.assign(login, { email, busy: true }); refreshCard();
-      try { await sendCode(email); login.step = 'code'; toast('Code sent'); }
-      catch (e) { toast(/rate|too many|seconds/i.test(e.message || '') ? 'Too many codes asked. Wait a bit and try again.' : 'Couldn’t send the code: ' + (e.message || 'try again')); }
+    if (f.id !== 'syncLoginForm') return;
+    ev.preventDefault();
+    const create = ev.submitter && ev.submitter.value === 'signup';
+    const email = f.email.value.trim(), password = f.password.value;
+    if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Enter a valid e-mail address'); return; }
+    if (password.length < 8) { toast('Use a password of at least 8 characters'); return; }
+    if (create) f.password.setAttribute('autocomplete', 'new-password');
+    Object.assign(login, { email, busy: true }); refreshCard();
+    try {
+      await signIn(email, password, create);
+      login.busy = false;
+      toast(create ? 'Account created' : 'Signed in');
+      refreshCard();
+      await syncNow({ first: true, quiet: false });
+    } catch (e) {
       login.busy = false; refreshCard();
-      document.querySelector('#syncCodeForm input')?.focus();
-    }
-    if (f.id === 'syncCodeForm') {
-      ev.preventDefault();
-      const code = f.code.value.replace(/\D/g, '');
-      if (code.length < 6) { toast('Enter the code from the e-mail'); return; }
-      login.busy = true; refreshCard();
-      try {
-        await verifyCode(login.email, code);
-        login.step = 'email'; login.busy = false;
-        toast('Signed in');
-        refreshCard();
-        await syncNow({ first: true, quiet: false });
-      } catch (e) {
-        login.busy = false; refreshCard();
-        toast(/expired|invalid/i.test(e.message || '') ? 'That code is wrong or expired' : 'Sign-in failed: ' + (e.message || 'try again'));
-      }
+      const m = e.message || '';
+      toast(/invalid login/i.test(m) ? 'Wrong e-mail or password' : /already registered|already exists/i.test(m) ? 'This e-mail already has an account: tap Sign in' : /signups not allowed|signup.*disabled/i.test(m) ? 'New accounts are switched off for this project' : /password/i.test(m) ? m : 'Couldn’t sign in: ' + (m || 'try again'));
     }
   });
   document.addEventListener('click', (ev) => {
@@ -303,7 +287,6 @@ window.GainlySync = function GainlySync(core) {
     if (!b) return;
     if (b.dataset.sync === 'now') syncNow({ quiet: false });
     if (b.dataset.sync === 'signout') signOut();
-    if (b.dataset.sync === 'back') { Object.assign(login, { step: 'email', busy: false }); refreshCard(); }
   });
 
   // Start: if signed in before, sync in the background
