@@ -133,6 +133,7 @@ window.GainlyFood = function (core) {
       let score = 0;
       if (f.name.startsWith(words[0])) score += 6;
       if (f.name === words[0] || f.name.startsWith(words[0] + ' ')) score += 4;
+      if (f.name === words.join(' ')) score += 5;
       for (const w of words) { if (new RegExp('(^|[\\s/(-])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(f.name)) score += 3; else if (f.name.includes(w)) score += 1; }
       if (/\brauw\b|\bonbereid\b/.test(f.name)) score += 0.5;
       score -= f.name.length / 60;
@@ -167,9 +168,10 @@ window.GainlyFood = function (core) {
   // Name search. The search servers are sometimes busy ("temporarily unavailable"), so try a few
   // of them with short pauses. The Belgian and Dutch sites show local products first.
   const SEARCH_FIELDS = 'code,product_name,product_name_nl,brands,serving_quantity,nutriments,image_front_small_url';
-  async function searchOFF(q) {
+  async function searchOFF(q, stale = () => false) {
     const hosts = ['be', 'nl', 'be', 'world', 'nl', 'be'];
     for (let i = 0; i < hosts.length; i++) {
+      if (stale()) throw new Error('stale');
       try {
         const r = await fetch(`https://${hosts[i]}.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=24&fields=${SEARCH_FIELDS}`);
         if (r.ok) {
@@ -365,6 +367,7 @@ window.GainlyFood = function (core) {
   function openAdd(meal) {
     Object.assign(fa, { meal, q: '', results: null, busy: false, err: '', tab: 'recent', nevo: null, mine: null });
     $('#foodAddTitle').textContent = `Add to ${MEALS.find(([k]) => k === meal)[1]}`;
+    $('#foodAddBody').innerHTML = '';
     renderAdd();
     addSheet.showModal();
   }
@@ -389,49 +392,63 @@ window.GainlyFood = function (core) {
       else if (fa.err) off = hint(esc(fa.err));
       else if (fa.results && fa.results.length) off = `<div class="list">${fa.results.map(prodRow).join('')}</div>`;
       else off = hint('No branded products found.');
-      if (!mine.length && !nevo.length && fa.results && !fa.results.length) list = hint('Nothing found. Try other words, scan the barcode, or create the food yourself.');
+      if (fa.q.length < 3 && !mine.length && !nevo.length) list = hint('Keep typing…');
+      else if (fa.q.length < 3) list = parts.join('');
+      else if (!mine.length && !nevo.length && fa.results && !fa.results.length) list = hint('Nothing found. Try other words, scan the barcode, or create the food yourself.');
       else list = parts.join('') + `<h3 class="fa-sec">Products</h3>${off}`;
     } else {
       const src = fa.tab === 'own' ? own : recentProducts();
       list = src.length ? `<div class="list">${src.map(prodRow).join('')}</div>` : `<p class="hint" style="text-align:center;padding:20px 0">${fa.tab === 'own' ? 'Foods you create yourself show up here.' : 'Foods you log show up here, so you can add them again in one tap.'}</p>`;
     }
+    const dyn = `
+      ${searching ? `<button type="button" class="inline-link" data-f="clear-search" style="margin:10px 2px 0;text-decoration:none">‹ Back to recent</button>` : `<div class="segmented segmented--full" role="group" aria-label="List" style="margin-top:12px">
+        <button type="button" data-f="add-tab" data-t="recent" aria-pressed="${fa.tab === 'recent'}">Recent</button>
+        <button type="button" data-f="add-tab" data-t="own" aria-pressed="${fa.tab === 'own'}">My foods</button>
+      </div>`}
+      <div style="margin-top:12px">${list}</div>`;
+    const live = $('#faDyn');
+    if (live && $('#foodSearchForm')) { live.innerHTML = dyn; return; }
     $('#foodAddBody').innerHTML = `
       <form class="food-search" id="foodSearchForm">
         <input class="search" type="search" name="q" placeholder="Search a food or brand" value="${esc(fa.q)}" enterkeyhint="search" aria-label="Search food">
         <button type="button" class="food-scan" data-f="scan" aria-label="Scan barcode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Scan</button>
       </form>
-      ${searching ? `<button type="button" class="inline-link" data-f="clear-search" style="margin:10px 2px 0;text-decoration:none">‹ Back to recent</button>` : `<div class="segmented segmented--full" role="group" aria-label="List" style="margin-top:12px">
-        <button type="button" data-f="add-tab" data-t="recent" aria-pressed="${fa.tab === 'recent'}">Recent</button>
-        <button type="button" data-f="add-tab" data-t="own" aria-pressed="${fa.tab === 'own'}">My foods</button>
-      </div>`}
-      <div style="margin-top:12px">${list}</div>
+      <div id="faDyn">${dyn}</div>
       <button type="button" class="button" data-f="new-product" style="margin-top:14px">+ Create a food</button>
       <p class="hint" style="text-align:center;margin-top:10px">Basic foods: ${NEVO_CREDIT}.<br>Products and barcodes: Open Food Facts.</p>`;
   }
-  async function runSearch(q) {
+  // Search while typing: saved + basic foods (NEVO) update on every key, Open Food Facts after a short pause
+  let searchSeq = 0, offTimer = 0;
+  async function runSearch(q, { now = false } = {}) {
     q = q.trim();
-    if (!q) return;
+    const seq = ++searchSeq;
+    clearTimeout(offTimer);
+    if (!q) { Object.assign(fa, { q: '', results: null, err: '', busy: false, nevo: null, mine: null }); return renderAdd(); }
     const words = fold(q).split(/\s+/).filter(Boolean);
-    // Saved foods that match come first, then basic foods (NEVO, instant), then branded products (Open Food Facts)
     const mine = Object.values(F().products).filter((p) => { const h = fold(p.name + ' ' + (p.brand || '')); return words.every((w) => h.includes(w)); });
     let nevo = [];
-    try { nevo = (await searchNevo(q)).filter((p) => !F().products[p.id]); } catch { /* offline before first load */ }
+    if (q.length >= 2) try { nevo = (await searchNevo(q)).filter((p) => !F().products[p.id]); } catch { /* offline before first load */ }
+    if (seq !== searchSeq) return;
     resultCache = new Map(nevo.map((p) => [p.id, p]));
-    Object.assign(fa, { q, busy: true, err: '', results: null, mine, nevo });
+    const offOk = q.length >= 3;
+    Object.assign(fa, { q, busy: offOk, err: '', results: offOk ? null : [], mine, nevo });
     renderAdd();
-    try {
-      const res = await searchOFF(q);
-      if (fa.q !== q) return;
-      for (const p of res) resultCache.set(p.id, p);
-      fa.results = res.filter((p) => !F().products[p.id]);
-    } catch (e) {
-      if (fa.q !== q) return;
-      fa.err = e.message === 'offline'
-        ? 'Branded products need an internet connection.'
-        : 'Open Food Facts is busy right now, so branded products are missing. Try again in a moment, or scan the barcode.';
-    }
-    fa.busy = false;
-    renderAdd();
+    if (!offOk) return;
+    offTimer = setTimeout(async () => {
+      try {
+        const res = await searchOFF(q, () => seq !== searchSeq);
+        if (seq !== searchSeq) return;
+        for (const p of res) resultCache.set(p.id, p);
+        fa.results = res.filter((p) => !F().products[p.id]);
+      } catch (e) {
+        if (seq !== searchSeq) return;
+        fa.err = e.message === 'offline'
+          ? 'Branded products need an internet connection.'
+          : 'Open Food Facts is busy right now, so branded products are missing. Try again in a moment, or scan the barcode.';
+      }
+      fa.busy = false;
+      renderAdd();
+    }, now ? 0 : 650);
   }
 
   /* ---------------- Sheet: amount (add / edit an entry) ---------------- */
@@ -661,7 +678,7 @@ window.GainlyFood = function (core) {
         saveSoon(); return core.render();
       }
       case 'add-tab': fa.tab = b.dataset.t; return renderAdd();
-      case 'clear-search': Object.assign(fa, { q: '', results: null, err: '', busy: false, nevo: null, mine: null }); return renderAdd();
+      case 'clear-search': { searchSeq++; clearTimeout(offTimer); Object.assign(fa, { q: '', results: null, err: '', busy: false, nevo: null, mine: null }); const i = $('#foodSearchForm')?.q; if (i) i.value = ''; return renderAdd(); }
       case 'scan': return openScan();
       case 'scan-find': { const v = $('#scanCode').value; if (v.replace(/\D/g, '').length >= 6) onCode(v); else toast('Type the number under the barcode'); return; }
       case 'pick-product': {
@@ -713,7 +730,11 @@ window.GainlyFood = function (core) {
     if (ev.target.id !== 'foodSearchForm') return;
     ev.preventDefault();
     ev.target.q.blur();
-    runSearch(ev.target.q.value);
+    runSearch(ev.target.q.value, { now: true });
+  });
+  document.addEventListener('input', (ev) => {
+    if (ev.target.name !== 'q' || ev.target.form?.id !== 'foodSearchForm') return;
+    runSearch(ev.target.value);
   });
 
   document.addEventListener('input', (ev) => {
