@@ -848,6 +848,7 @@ body.has-subnav { --subnav-h: 52px; }
   border-top: 1px solid var(--border);
 }
 body[data-group="body"] .subnav[data-group="body"],
+body[data-group="food"] .subnav[data-group="food"],
 body[data-group="gym"] .subnav[data-group="gym"] { display: grid; animation: subnav-in 0.3s var(--ease-out); }
 @keyframes subnav-in { from { opacity: 0; translate: 0 10px; } }
 .subtab {
