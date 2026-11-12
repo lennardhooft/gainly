@@ -391,13 +391,14 @@
   }
 
   /* ---------------- Thema ---------------- */
+  // Elk thema is één tint (OKLCH-hue): achtergrond, vlakken, randen, tekst en accent worden er allemaal van afgeleid (styles.css).
   const ACCENTS = [
-    { key: 'blauw', label: 'Blauw', dark: '#8ab4ff', light: '#2f6fe4' },
-    { key: 'mint', label: 'Mint', dark: '#5eead4', light: '#0f766e' },
-    { key: 'lime', label: 'Lime', dark: '#c6f36b', light: '#4d7c0f' },
-    { key: 'oranje', label: 'Oranje', dark: '#fdba74', light: '#c2410c' },
-    { key: 'roze', label: 'Roze', dark: '#f9a8d4', light: '#be185d' },
-    { key: 'paars', label: 'Paars', dark: '#c4b5fd', light: '#6d28d9' },
+    { key: 'blauw', label: 'Blauw', hue: 262 },
+    { key: 'mint', label: 'Mint', hue: 178 },
+    { key: 'lime', label: 'Lime', hue: 128 },
+    { key: 'oranje', label: 'Oranje', hue: 50 },
+    { key: 'roze', label: 'Roze', hue: 355 },
+    { key: 'paars', label: 'Paars', hue: 300 },
   ];
   const MODES = [{ key: 'system', label: 'Automatisch' }, { key: 'dark', label: 'Donker' }, { key: 'light', label: 'Licht' }];
   const themeOf = () => ({ mode: 'system', accent: 'blauw', ...(state.settings.theme || {}) });
@@ -407,8 +408,16 @@
     root.dataset.accent = t.accent;
     if (t.mode === 'system') delete root.dataset.mode; else root.dataset.mode = t.mode;
     try { localStorage.setItem('vorm:theme', JSON.stringify(t)); } catch { /* ok */ }
-    const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
-    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', bg);
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', toHex(getComputedStyle(document.body).backgroundColor));
+  }
+  // oklch() → #hex voor de theme-color van de statusbalk
+  function toHex(color) {
+    try {
+      const c = document.createElement('canvas').getContext('2d');
+      c.fillStyle = color; c.fillRect(0, 0, 1, 1);
+      const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
+      return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+    } catch { return '#0b0d10'; }
   }
   function themeHTML() {
     const t = themeOf();
@@ -418,7 +427,7 @@
         ${MODES.map((m) => `<button type="button" data-mode="${m.key}" aria-pressed="${m.key === t.mode}">${m.label}</button>`).join('')}
       </div>
       <div class="swatches" role="group" aria-label="Accentkleur">
-        ${ACCENTS.map((a) => `<button type="button" class="swatch" data-accent="${a.key}" aria-pressed="${a.key === t.accent}" style="--sw-dark:${a.dark};--sw-light:${a.light}">
+        ${ACCENTS.map((a) => `<button type="button" class="swatch" data-accent="${a.key}" aria-pressed="${a.key === t.accent}" style="--sw-h:${a.hue}">
           <span class="swatch__dot" aria-hidden="true"></span><span class="swatch__label">${a.label}</span></button>`).join('')}
       </div>
     </div>`;
@@ -452,16 +461,6 @@
           <button class="button" data-action="import">Importeer</button>
         </div>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
-      </div>
-
-      <div class="card">
-        <h2 class="card__title" style="margin-bottom:10px">Op je iPhone zetten</h2>
-        <ol class="steps">
-          <li>Open deze pagina in <strong>Safari</strong>.</li>
-          <li>Tik op <strong>Deel</strong> (vierkant met pijl).</li>
-          <li>Kies <strong>Zet op beginscherm</strong> en tik op <strong>Voeg toe</strong>.</li>
-        </ol>
-        <p class="hint" style="margin:12px 0 0">Daarna opent Vorm schermvullend, zonder Safari-balken, en werkt het ook offline.</p>
       </div>
 
       <div class="card">
