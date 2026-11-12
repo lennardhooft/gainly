@@ -1,8 +1,9 @@
 // Offline-cache voor de app. Een nieuwe versie (andere VERSION) wordt op de achtergrond klaargezet,
 // maar pas actief als de gebruiker in de app op "Bijwerken" tikt. Gegevens (localStorage) raakt dit nooit aan.
-const VERSION = 'gainly-v19';
+const VERSION = 'gainly-v20';
 const SHELL = ['./', 'index.html', 'styles.css', 'gym.js', 'app.js', 'exercises.json', 'manifest.webmanifest',
-  'icons/gainly-192.png', 'icons/gainly-512.png', 'icons/gainly-180.png', 'icons/logo.webp'];
+  'icons/gainly-192.png', 'icons/gainly-512.png', 'icons/gainly-180.png', 'icons/logo.webp',
+  'drawings/Barbell_Bench_Press_-_Medium_Grip/0.svg', 'drawings/Barbell_Bench_Press_-_Medium_Grip/1.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {

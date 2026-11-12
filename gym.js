@@ -208,14 +208,18 @@ window.GainlyGym = function (core) {
   }
 
   const infoOf = (ex) => (ex.img ? dbInfo.get(ex.img) : null);
+  // Getekende versies (vector, achtergrond weggeknipt). Proef: voorlopig alleen Bench Press.
+  const DRAWN = new Set(['Barbell_Bench_Press_-_Medium_Grip']);
+  const isDrawn = (ex) => !!ex.img && DRAWN.has(ex.img);
   function imgUrl(ex, frame = 0) {
     if (!ex.img) return null;
+    if (isDrawn(ex)) return `drawings/${ex.img}/${frame}.svg`;
     const info = dbInfo.get(ex.img);
     return CDN + ((info && info.im && info.im[frame]) || `${ex.img}/${frame}.jpg`);
   }
   function thumbHTML(ex) {
     const u = imgUrl(ex, 0);
-    return `<span class="ex-thumb" aria-hidden="true">${u ? `<img src="${u}" alt="" loading="lazy" decoding="async">` : `<span>${esc(ex.name.charAt(0))}</span>`}</span>`;
+    return `<span class="ex-thumb${isDrawn(ex) ? ' is-drawn' : ''}" aria-hidden="true">${u ? `<img src="${u}" alt="" loading="lazy" decoding="async">` : `<span>${esc(ex.name.charAt(0))}</span>`}</span>`;
   }
 
   /* ---------------- Calculations ---------------- */
@@ -635,7 +639,7 @@ window.GainlyGym = function (core) {
       </div>`;
     }
     const custom = G().custom.some((c) => c.id === ex.id);
-    const visual = ex.img ? `<div class="ex-visual"><img src="${imgUrl(ex, 0)}" alt="${esc(ex.name)}: start position"><img class="ex-visual__end" src="${imgUrl(ex, 1)}" alt="${esc(ex.name)}: end position"></div>` : '';
+    const visual = ex.img ? `<div class="ex-visual${isDrawn(ex) ? ' is-drawn' : ''}"><img src="${imgUrl(ex, 0)}" alt="${esc(ex.name)}: start position"><img class="ex-visual__end" src="${imgUrl(ex, 1)}" alt="${esc(ex.name)}: end position"></div>` : '';
     const muscles = info ? `<div class="ex-facts">
         ${info.p.length ? `<div><span>Primary</span>${esc(info.p.map(cap).join(', '))}</div>` : ''}
         ${info.s.length ? `<div><span>Secondary</span>${esc(info.s.map(cap).join(', '))}</div>` : ''}
