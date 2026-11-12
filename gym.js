@@ -348,10 +348,38 @@ window.GainlyGym = function (core) {
     };
     wk.prs = computePRs(wk);
     g.workouts.push(wk);
+    const updated = updateRoutineFrom(a);
     g.active = null;
     saveNow();
     core.render();
     openWorkout(wk.id, true);
+    if (updated) toast(`${updated} updated with today’s weights and reps`);
+  }
+
+  // The routine always takes over the values of its last session: each ticked set replaces the planned set
+  // at the same position (extra sets are added). Sets you didn't tick keep their planned values.
+  function updateRoutineFrom(a) {
+    const r = a.routineId && G().routines.find((x) => x.id === a.routineId);
+    if (!r) return null;
+    let changed = false;
+    const used = new Set();
+    for (const it of a.items) {
+      const k = r.items.findIndex((x, i) => x.exId === it.exId && !used.has(i));
+      if (k < 0) continue;
+      used.add(k);
+      const ri = r.items[k];
+      const planned = routineSets(ri).map((x) => ({ ...x }));
+      it.sets.forEach((st, j) => {
+        if (!st.d) return;
+        const next = cleanSet({ t: st.t || '', w: st.w, r: st.r, s: st.s });
+        if (j < planned.length) planned[j] = next; else planned.push(next);
+      });
+      ri.sets = planned.map(cleanSet);
+      delete ri.n; delete ri.types;
+      ri.rest = it.rest ?? ri.rest;
+      changed = true;
+    }
+    return changed ? r.name : null;
   }
 
   /* ---------------- Rest timer ---------------- */
