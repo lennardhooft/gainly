@@ -30,6 +30,8 @@
     <section class="view" data-view="overview" aria-labelledby="viewTitle"></section>
     <section class="view" data-view="compare" hidden></section>
     <section class="view" data-view="photos" hidden></section>
+    <section class="view" data-view="food" hidden></section>
+    <section class="view" data-view="gym" hidden></section>
     <section class="view" data-view="settings" hidden></section>
   </main>
 
@@ -37,18 +39,34 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
   </button>
 
-  <nav class="tabbar" aria-label="Hoofdmenu">
-    <button type="button" class="tab" data-tab="overview" aria-current="page">
+  <!-- Submenu Lichaam: klapt open boven de tabbalk -->
+  <div class="submenu" id="bodyMenu" role="menu" aria-label="Lichaam" hidden>
+    <button type="button" class="submenu__item" data-tab="overview" role="menuitem">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V10M10 19V5M16 19v-7M22 19H2"/></svg>
       <span>Overzicht</span>
     </button>
-    <button type="button" class="tab" data-tab="compare">
+    <button type="button" class="submenu__item" data-tab="compare" role="menuitem">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M17 4v16M3 8l4-4 4 4M13 16l4 4 4-4"/></svg>
       <span>Vergelijk</span>
     </button>
-    <button type="button" class="tab" data-tab="photos">
+    <button type="button" class="submenu__item" data-tab="photos" role="menuitem">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.6-2h6.2l1.6 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.8"/></svg>
       <span>Foto's</span>
+    </button>
+  </div>
+
+  <nav class="tabbar" aria-label="Hoofdmenu">
+    <button type="button" class="tab" id="bodyTab" aria-haspopup="menu" aria-expanded="false" aria-controls="bodyMenu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.5" r="2.5"/><path d="M5 8.5c4 1.2 10 1.2 14 0M12 9.5V14M12 14l-3.5 7M12 14l3.5 7"/></svg>
+      <span>Lichaam<svg class="tab__caret" viewBox="0 0 10 6" aria-hidden="true"><path d="m1 5 4-4 4 4"/></svg></span>
+    </button>
+    <button type="button" class="tab" data-tab="food">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 11v10M17 21V3c-2.2 0-4 2.5-4 6v5h4"/></svg>
+      <span>Voeding</span>
+    </button>
+    <button type="button" class="tab" data-tab="gym">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>
+      <span>Gym</span>
     </button>
     <button type="button" class="tab" data-tab="settings">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>

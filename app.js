@@ -33,7 +33,9 @@
     { key: 'all', label: 'Alles', days: Infinity },
   ];
 
-  const TITLES = { overview: 'Overzicht', compare: 'Vergelijk', photos: "Foto's", settings: 'Instellingen' };
+  const TITLES = { overview: 'Overzicht', compare: 'Vergelijk', photos: "Foto's", food: 'Voeding', gym: 'Gym', settings: 'Instellingen' };
+  // Categorieën in het menu: Lichaam bundelt de drie lichaamspagina's in een submenu.
+  const BODY_VIEWS = ['overview', 'compare', 'photos'];
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).
   const TIPS = {
@@ -306,13 +308,11 @@
         ${forecastHTML(last, reached)}
       </div>`;
     }
-    hero += badgesHTML();
 
     const available = metricsWithData();
     if (!available.some((m) => m.key === ui.metric)) ui.metric = available[0].key;
     const m = M[ui.metric];
 
-    const tape = tapeTotal();
     const cards = available.map((mm) => {
       const sr = series(mm.key);
       const last = sr[sr.length - 1];
@@ -336,8 +336,6 @@
         </div>
         <div class="chart" id="mainChart"></div>
       </div>
-      ${tape ? `<div class="card"><p class="eyebrow">Totale omtrek (${plural(tape.count, 'maat', 'maten')}, eerste → laatste meting)</p>
-        <p class="hero__value" style="font-size:40px;margin:6px 0 0">${deltaHTML({ dir: -1, unit: 'cm' }, tape.delta)}</p></div>` : ''}
       <h2 class="section-title">Alle maten · sinds start</h2>
       <div class="metric-grid">${cards}</div>
       ${logHTML()}
@@ -460,16 +458,6 @@
     if (celebrate && had && fresh.length) showCelebration(fresh);
   }
 
-  function badgesHTML() {
-    const list = milestones().reverse();
-    if (!list.length) return '';
-    return `<h2 class="section-title">Mijlpalen · ${list.length}</h2>
-      <div class="badges">${list.map((b) => `<div class="badge" title="${esc(b.text)}">
-        <span class="badge__icon" aria-hidden="true">${b.icon}</span>
-        <span class="badge__title">${esc(b.title)}</span>
-        <span class="badge__date">${fmtShort(b.date)}</span></div>`).join('')}</div>`;
-  }
-
   const celebrateDlg = $('#celebrate');
   function showCelebration(list) {
     const main = list[list.length - 1];
@@ -488,20 +476,6 @@
       }
     }
     celebrateDlg.showModal();
-  }
-
-  // Som van omtrekken die zowel in de eerste als laatste meting met die maat voorkomen.
-  function tapeTotal() {
-    const entries = entriesAsc();
-    if (entries.length < 2) return null;
-    let delta = 0, count = 0;
-    for (const m of TAPE) {
-      const s = series(m.key);
-      if (s.length < 2) continue;
-      delta += s[s.length - 1].value - s[0].value;
-      count++;
-    }
-    return count >= 2 ? { delta, count } : null;
   }
 
   function logHTML() {
@@ -987,18 +961,28 @@
     r.readAsDataURL(blob);
   });
 
-  const RENDER = { overview: renderOverview, compare: renderCompare, photos: renderPhotos, settings: renderSettings };
+  // Nog te bouwen categorieën
+  function renderSoon(title, text) {
+    return () => {
+      viewEl(ui.view).innerHTML = `<div class="card empty"><span class="soon">Binnenkort</span><h2>${title}</h2><p>${text}</p></div>`;
+    };
+  }
+  const renderFood = renderSoon('Calorieën bijhouden', 'Hier komt je voeding: wat je eet, je calorieën en eiwitten per dag.');
+  const renderGym = renderSoon('Trainingen', 'Hier komen je trainingen: oefeningen, sets, gewichten en je records.');
+
+  const RENDER = { overview: renderOverview, compare: renderCompare, photos: renderPhotos, food: renderFood, gym: renderGym, settings: renderSettings };
 
   function render() {
     if (!RENDER[ui.view]) ui.view = 'overview';
     for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== ui.view;
-    for (const t of document.querySelectorAll('.tab')) {
-      if (t.dataset.tab === ui.view) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
+    for (const t of document.querySelectorAll('.tab, .submenu__item')) {
+      const on = t.dataset.tab ? t.dataset.tab === ui.view : t.id === 'bodyTab' && BODY_VIEWS.includes(ui.view);
+      if (on) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
     }
     $('#viewTitle').textContent = TITLES[ui.view];
     document.title = ui.view === 'overview' ? 'Vorm' : `${TITLES[ui.view]} · Vorm`;
     const fab = $('#fab');
-    fab.hidden = ui.view === 'settings' || ui.view === 'compare';
+    fab.hidden = !['overview', 'photos'].includes(ui.view);
     fab.setAttribute('aria-label', ui.view === 'photos' ? "Foto's toevoegen" : 'Nieuwe meting');
     RENDER[ui.view]();
     saveUi();
@@ -1199,10 +1183,22 @@
   }
 
   /* ---------------- Events ---------------- */
+  // Submenu van Lichaam: klapt open boven de tabbalk.
+  const bodyMenu = $('#bodyMenu');
+  const bodyTab = $('#bodyTab');
+  function setMenu(open) {
+    bodyMenu.hidden = !open;
+    bodyTab.setAttribute('aria-expanded', String(open));
+    document.body.classList.toggle('menu-open', open);
+  }
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !bodyMenu.hidden) { setMenu(false); bodyTab.focus(); } });
+
   document.addEventListener('click', (ev) => {
+    if (!bodyMenu.hidden && !ev.target.closest('#bodyMenu, #bodyTab')) { setMenu(false); return; }
     const t = ev.target.closest('button, [data-tab-go]');
     if (!t) return;
-    if (t.dataset.tab) return go(t.dataset.tab);
+    if (t.id === 'bodyTab') return setMenu(bodyMenu.hidden);
+    if (t.dataset.tab) { setMenu(false); return go(t.dataset.tab); }
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
     if (t.dataset.mode) return setTheme({ mode: t.dataset.mode });
     if (t.dataset.accent) return setTheme({ accent: t.dataset.accent });
