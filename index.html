@@ -14,7 +14,7 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <script>
-    try { const t = JSON.parse(localStorage.getItem('vorm:theme')) || {};
+    try { const t = JSON.parse(localStorage.getItem('gainly:theme')) || {};
       if (t.accent) document.documentElement.dataset.accent = t.accent;
       if (t.mode && t.mode !== 'system') document.documentElement.dataset.mode = t.mode; } catch (e) {}
   </script>
@@ -43,9 +43,9 @@
   <!-- Tweede balk voor Lichaam, gestapeld boven het hoofdmenu -->
   <nav class="subnav" aria-label="Lichaam">
     <button type="button" class="subtab" data-tab="overview">Overzicht</button>
-    <button type="button" class="subtab" data-tab="log">Metingen</button>
     <button type="button" class="subtab" data-tab="compare">Vergelijk</button>
     <button type="button" class="subtab" data-tab="photos">Foto's</button>
+    <button type="button" class="subtab" data-tab="log">Metingen</button>
   </nav>
 
   <nav class="tabbar" aria-label="Hoofdmenu">

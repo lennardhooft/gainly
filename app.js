@@ -1,8 +1,15 @@
-/* Gainly (voorheen Vorm) — gewicht en lichaamsmaten. Alles lokaal (localStorage). */
+/* Gainly — gewicht en lichaamsmaten. Alles lokaal (localStorage). */
 (() => {
   'use strict';
 
-  const STORE_KEY = 'vorm:v1';
+  const STORE_KEY = 'gainly:v1';
+  // Eenmalig: gegevens van de oude naam (Vorm) overnemen als die er nog zijn.
+  try {
+    for (const k of ['v1', 'snapshots', 'theme']) {
+      const old = localStorage.getItem('vorm:' + k);
+      if (old != null && localStorage.getItem('gainly:' + k) == null) localStorage.setItem('gainly:' + k, old);
+    }
+  } catch { /* ok */ }
 
   // dir: -1 = lager is beter, 1 = hoger is beter, 0 = neutraal
   const METRICS = [
@@ -35,7 +42,7 @@
 
   const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', photos: "Foto's", food: 'Voeding', gym: 'Gym', settings: 'Instellingen' };
   // Categorieën in het menu: Lichaam heeft een tweede balk met zijn vier pagina's.
-  const BODY_VIEWS = ['overview', 'log', 'compare', 'photos'];
+  const BODY_VIEWS = ['overview', 'compare', 'photos', 'log'];
 
   // Uitleg per meetplek (L/R delen dezelfde tekst).
   const TIPS = {
@@ -106,7 +113,7 @@
   let state = load();
 
   // Herstelpunten: max. 1 per dag, de laatste 10 dagen, apart van de gewone opslag.
-  const SNAP_KEY = 'vorm:snapshots';
+  const SNAP_KEY = 'gainly:snapshots';
   function snapshots() { try { return JSON.parse(localStorage.getItem(SNAP_KEY)) || []; } catch { return []; } }
   function snapshot(reason = 'auto') {
     try {
@@ -133,8 +140,8 @@
   }
 
   const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null, photoPose: 'front', photoMode: 'slider', photoA: null, photoB: null };
-  try { Object.assign(ui, JSON.parse(sessionStorage.getItem('vorm:ui')) || {}); } catch { /* ok */ }
-  const saveUi = () => { try { sessionStorage.setItem('vorm:ui', JSON.stringify(ui)); } catch { /* ok */ } };
+  try { Object.assign(ui, JSON.parse(sessionStorage.getItem('gainly:ui')) || {}); } catch { /* ok */ }
+  const saveUi = () => { try { sessionStorage.setItem('gainly:ui', JSON.stringify(ui)); } catch { /* ok */ } };
 
   const entriesAsc = () => [...state.entries].sort((a, b) => a.date.localeCompare(b.date));
   const series = (key) => entriesAsc().filter((e) => e.values[key] != null).map((e) => ({ date: e.date, value: e.values[key] }));
@@ -637,7 +644,7 @@
     const root = document.documentElement;
     root.dataset.accent = t.accent;
     if (t.mode === 'system') delete root.dataset.mode; else root.dataset.mode = t.mode;
-    try { localStorage.setItem('vorm:theme', JSON.stringify(t)); } catch { /* ok */ }
+    try { localStorage.setItem('gainly:theme', JSON.stringify(t)); } catch { /* ok */ }
     for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', toHex(getComputedStyle(document.body).backgroundColor));
   }
   // oklch() → #hex voor de theme-color van de statusbalk
@@ -727,7 +734,7 @@
   const PhotoDB = (() => {
     let dbp = null;
     const open = () => (dbp ||= new Promise((res, rej) => {
-      const r = indexedDB.open('vorm-photos', 1);
+      const r = indexedDB.open('gainly-photos', 1);
       r.onupgradeneeded = () => r.result.createObjectStore('photos', { keyPath: 'id' });
       r.onsuccess = () => res(r.result);
       r.onerror = () => { dbp = null; rej(r.error); };
@@ -1120,7 +1127,7 @@
 
   /* ---------------- Backup ---------------- */
   async function exportData(withPhotos = false) {
-    const payload = { app: 'vorm', version: 1, exported: new Date().toISOString(), ...state };
+    const payload = { app: 'gainly', version: 1, exported: new Date().toISOString(), ...state };
     if (withPhotos) {
       toast("Foto's inpakken…");
       payload.photos = await Promise.all(photos.map(async (p) => ({ id: p.id, date: p.date, pose: p.pose, w: p.w, h: p.h, t: p.t, data: await blobToB64(p.blob) })));
