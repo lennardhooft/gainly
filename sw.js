@@ -1,5 +1,5 @@
 // Offline-cache voor de app-shell. Verhoog VERSION bij elke wijziging zodat de iPhone de nieuwe versie ophaalt.
-const VERSION = 'vorm-v2';
+const VERSION = 'vorm-v3';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 

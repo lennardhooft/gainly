@@ -7,7 +7,6 @@
   // dir: -1 = lager is beter, 1 = hoger is beter, 0 = neutraal
   const METRICS = [
     { key: 'weight',    label: 'Gewicht',        unit: 'kg', dir: -1, group: 'Lichaam' },
-    { key: 'bodyfat',   label: 'Vetpercentage',  unit: '%',  dir: -1, group: 'Lichaam' },
     { key: 'muscle',    label: 'Spiermassa',     unit: 'kg', dir: 1,  group: 'Lichaam' },
     { key: 'neck',      label: 'Nek',            unit: 'cm', dir: 0,  group: 'Omtrek' },
     { key: 'shoulders', label: 'Schouders',      unit: 'cm', dir: 1,  group: 'Omtrek' },
@@ -35,7 +34,7 @@
     { key: 'all', label: 'Alles', days: Infinity },
   ];
 
-  const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', settings: 'Instellingen' };
+  const TITLES = { overview: 'Overzicht', compare: 'Vergelijk', settings: 'Instellingen' };
 
   /* ---------------- Helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -240,7 +239,8 @@
       const first = w[0], last = w[w.length - 1];
       const ref30 = valueAt('weight', addDays(last.date, -30));
       const d30 = ref30 && ref30.date !== last.date ? last.value - ref30.value : null;
-      const bmi = s.height ? last.value / (s.height / 100) ** 2 : null;
+      const ref7 = valueAt('weight', addDays(last.date, -7));
+      const d7 = ref7 && ref7.date !== last.date ? last.value - ref7.value : null;
       let goal = '';
       if (s.goalWeight && first.value !== s.goalWeight) {
         const total = first.value - s.goalWeight;
@@ -258,8 +258,8 @@
         <p class="hero__value">${fmt(last.value)}<small>kg</small></p>
         <div class="stats">
           <div class="stat"><span class="stat__label">Sinds start</span><span class="stat__value">${w.length > 1 ? deltaHTML(M.weight, last.value - first.value) : '—'}</span></div>
+          <div class="stat"><span class="stat__label">7 dagen</span><span class="stat__value">${d7 != null ? deltaHTML(M.weight, d7) : '—'}</span></div>
           <div class="stat"><span class="stat__label">30 dagen</span><span class="stat__value">${d30 != null ? deltaHTML(M.weight, d30) : '—'}</span></div>
-          <div class="stat"><span class="stat__label">BMI</span><span class="stat__value">${bmi ? fmt(bmi) : '<button class="link" style="font-size:15px;padding:0;min-height:0" data-tab-go="settings">Lengte?</button>'}</span></div>
         </div>
         ${goal}
       </div>`;
@@ -296,7 +296,9 @@
       ${tape ? `<div class="card"><p class="eyebrow">Totale omtrek (${plural(tape.count, 'maat', 'maten')}, eerste → laatste meting)</p>
         <p class="hero__value" style="font-size:40px;margin:6px 0 0">${deltaHTML({ dir: -1, unit: 'cm' }, tape.delta)}</p></div>` : ''}
       <h2 class="section-title">Alle maten · sinds start</h2>
-      <div class="metric-grid">${cards}</div>`;
+      <div class="metric-grid">${cards}</div>
+      ${logHTML()}
+      <p class="hint" style="text-align:center">Tik op een meting om ze aan te passen of te verwijderen.</p>`;
 
     const range = RANGES.find((r) => r.key === ui.range) || RANGES[RANGES.length - 1];
     const from = range.days === Infinity ? '0000-00-00' : addDays(todayISO(), -range.days);
@@ -321,17 +323,12 @@
     return count >= 2 ? { delta, count } : null;
   }
 
-  function renderLog() {
-    const el = viewEl('log');
-    if (!state.entries.length) {
-      el.innerHTML = emptyState('Nog geen metingen', 'Tip: meet altijd op hetzelfde moment, bijvoorbeeld 1× per week op zondagochtend, nuchter.', 'add-measure', 'Meting toevoegen');
-      return;
-    }
+  function logHTML() {
     const desc = entriesAsc().reverse();
     const byYear = {};
     for (const e of desc) (byYear[e.date.slice(0, 4)] ||= []).push(e);
-    el.innerHTML = Object.entries(byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, list]) => `
-      <h2 class="section-title">${year} · ${plural(list.length, 'meting', 'metingen')}</h2>
+    return Object.entries(byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, list]) => `
+      <h2 class="section-title" id="${year === desc[0].date.slice(0, 4) ? 'metingen' : ''}">Metingen ${year} · ${list.length}</h2>
       <div class="list">${list.map((e) => {
         const n = Object.keys(e.values).filter((k) => e.values[k] != null).length;
         const wv = e.values.weight;
@@ -393,6 +390,47 @@
       <p class="hint">Een kleine datum onder een waarde betekent dat die maat op die dag niet gemeten is; dan staat de meest recente meting ervoor.</p>`;
   }
 
+  /* ---------------- Thema ---------------- */
+  const ACCENTS = [
+    { key: 'blauw', label: 'Blauw', dark: '#8ab4ff', light: '#2f6fe4' },
+    { key: 'mint', label: 'Mint', dark: '#5eead4', light: '#0f766e' },
+    { key: 'lime', label: 'Lime', dark: '#c6f36b', light: '#4d7c0f' },
+    { key: 'oranje', label: 'Oranje', dark: '#fdba74', light: '#c2410c' },
+    { key: 'roze', label: 'Roze', dark: '#f9a8d4', light: '#be185d' },
+    { key: 'paars', label: 'Paars', dark: '#c4b5fd', light: '#6d28d9' },
+  ];
+  const MODES = [{ key: 'system', label: 'Automatisch' }, { key: 'dark', label: 'Donker' }, { key: 'light', label: 'Licht' }];
+  const themeOf = () => ({ mode: 'system', accent: 'blauw', ...(state.settings.theme || {}) });
+  function applyTheme() {
+    const t = themeOf();
+    const root = document.documentElement;
+    root.dataset.accent = t.accent;
+    if (t.mode === 'system') delete root.dataset.mode; else root.dataset.mode = t.mode;
+    try { localStorage.setItem('vorm:theme', JSON.stringify(t)); } catch { /* ok */ }
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', bg);
+  }
+  function themeHTML() {
+    const t = themeOf();
+    return `<div class="card">
+      <h2 class="card__title" style="margin-bottom:14px">Thema</h2>
+      <div class="segmented segmented--full" role="group" aria-label="Weergave">
+        ${MODES.map((m) => `<button type="button" data-mode="${m.key}" aria-pressed="${m.key === t.mode}">${m.label}</button>`).join('')}
+      </div>
+      <div class="swatches" role="group" aria-label="Accentkleur">
+        ${ACCENTS.map((a) => `<button type="button" class="swatch" data-accent="${a.key}" aria-pressed="${a.key === t.accent}" style="--sw-dark:${a.dark};--sw-light:${a.light}">
+          <span class="swatch__dot" aria-hidden="true"></span><span class="swatch__label">${a.label}</span></button>`).join('')}
+      </div>
+    </div>`;
+  }
+  function setTheme(patch) {
+    state.settings = { ...state.settings, theme: { ...themeOf(), ...patch } };
+    save();
+    applyTheme();
+    render();
+  }
+  matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', applyTheme);
+
   /* ---------------- Settings ---------------- */
   function renderSettings() {
     const el = viewEl('settings');
@@ -400,12 +438,11 @@
     el.innerHTML = `
       <form class="card" id="settingsForm" novalidate>
         <h2 class="card__title" style="margin-bottom:14px">Profiel</h2>
-        <div class="field-grid">
-          <label class="field"><span class="field__label">Lengte <small>cm</small></span><input name="height" inputmode="decimal" value="${s.height ? fmt(s.height, 0) : ''}" placeholder="180"></label>
-          <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
-        </div>
+        <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
         <button class="button button--primary" type="submit">Bewaar profiel</button>
       </form>
+
+      ${themeHTML()}
 
       <div class="card">
         <h2 class="card__title" style="margin-bottom:6px">Back-up</h2>
@@ -436,7 +473,7 @@
       </div>`;
   }
 
-  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, settings: renderSettings };
+  const RENDER = { overview: renderOverview, compare: renderCompare, settings: renderSettings };
 
   function render() {
     if (!RENDER[ui.view]) ui.view = 'overview';
@@ -576,6 +613,7 @@
       const next = normalize(data);
       if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')} importeren? Dit vervangt je huidige gegevens.`)) return;
       state = next;
+      applyTheme();
       save();
       toast('Back-up geïmporteerd');
       render();
@@ -587,20 +625,20 @@
   function demoData() {
     const entries = [];
     const start = addDays(todayISO(), -7 * 16);
-    const base = { weight: 94.8, bodyfat: 27.5, neck: 41, shoulders: 120, chest: 108, waist: 102, belly: 106, hips: 108, armL: 36, armR: 36.5, forearmL: 30, forearmR: 30.5, thighL: 63, thighR: 63.5, calfL: 40, calfR: 40 };
-    const rate = { weight: -0.55, bodyfat: -0.32, neck: -0.08, shoulders: 0.05, chest: -0.25, waist: -0.55, belly: -0.6, hips: -0.35, armL: 0.04, armR: 0.04, forearmL: 0, forearmR: 0, thighL: -0.2, thighR: -0.2, calfL: -0.05, calfR: -0.05 };
+    const base = { weight: 94.8, neck: 41, shoulders: 120, chest: 108, waist: 102, belly: 106, hips: 108, armL: 36, armR: 36.5, forearmL: 30, forearmR: 30.5, thighL: 63, thighR: 63.5, calfL: 40, calfR: 40 };
+    const rate = { weight: -0.55, neck: -0.08, shoulders: 0.05, chest: -0.25, waist: -0.55, belly: -0.6, hips: -0.35, armL: 0.04, armR: 0.04, forearmL: 0, forearmR: 0, thighL: -0.2, thighR: -0.2, calfL: -0.05, calfR: -0.05 };
     for (let w = 0; w <= 16; w++) {
       const date = addDays(start, w * 7);
       const values = {};
       const tape = w % 2 === 0;
       for (const k of Object.keys(base)) {
-        if (k !== 'weight' && k !== 'bodyfat' && !tape) continue;
+        if (k !== 'weight' && !tape) continue;
         const noise = (Math.sin(w * 12.9 + k.length) * 0.5) * (k === 'weight' ? 0.6 : 0.3);
         values[k] = Math.round((base[k] + rate[k] * w + noise) * 10) / 10;
       }
       entries.push({ id: uid(), date, values, note: '' });
     }
-    return { entries, settings: { height: 181, goalWeight: 82 } };
+    return { entries, settings: { ...state.settings, goalWeight: 82 } };
   }
 
   /* ---------------- Events ---------------- */
@@ -609,6 +647,8 @@
     if (!t) return;
     if (t.dataset.tab) return go(t.dataset.tab);
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
+    if (t.dataset.mode) return setTheme({ mode: t.dataset.mode });
+    if (t.dataset.accent) return setTheme({ accent: t.dataset.accent });
     if (t.dataset.range) { ui.range = t.dataset.range; return render(); }
     if (t.dataset.metric) {
       ui.metric = t.dataset.metric;
@@ -642,14 +682,11 @@
     if (ev.target.id !== 'settingsForm') return;
     ev.preventDefault();
     const f = ev.target;
-    const height = parseNum(f.height.value);
     const goalWeight = parseNum(f.goalWeight.value);
-    const hBad = Number.isNaN(height) || (height != null && (height < 100 || height > 250));
     const gBad = Number.isNaN(goalWeight) || (goalWeight != null && (goalWeight < 30 || goalWeight > 300));
-    f.height.setAttribute('aria-invalid', hBad);
     f.goalWeight.setAttribute('aria-invalid', gBad);
-    if (hBad || gBad) { toast('Controleer je lengte en streefgewicht'); return; }
-    state.settings = { ...state.settings, height, goalWeight };
+    if (gBad) { toast('Controleer je streefgewicht'); return; }
+    state.settings = { ...state.settings, goalWeight };
     save();
     toast('Profiel bewaard');
   });
@@ -680,6 +717,7 @@
 
   /* ---------------- Start ---------------- */
   buildMeasureFields();
+  applyTheme();
   render();
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

@@ -14,6 +14,11 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>
+    try { const t = JSON.parse(localStorage.getItem('vorm:theme')) || {};
+      if (t.accent) document.documentElement.dataset.accent = t.accent;
+      if (t.mode && t.mode !== 'system') document.documentElement.dataset.mode = t.mode; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
@@ -24,7 +29,6 @@
 
   <main class="views" id="views">
     <section class="view" data-view="overview" aria-labelledby="viewTitle"></section>
-    <section class="view" data-view="log" hidden></section>
     <section class="view" data-view="compare" hidden></section>
     <section class="view" data-view="settings" hidden></section>
   </main>
@@ -37,10 +41,6 @@
     <button type="button" class="tab" data-tab="overview" aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V10M10 19V5M16 19v-7M22 19H2"/></svg>
       <span>Overzicht</span>
-    </button>
-    <button type="button" class="tab" data-tab="log">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="8" rx="2"/><path d="M7 8v3M11 8v4M15 8v3M19 8v2"/></svg>
-      <span>Metingen</span>
     </button>
     <button type="button" class="tab" data-tab="compare">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M17 4v16M3 8l4-4 4 4M13 16l4 4 4-4"/></svg>
