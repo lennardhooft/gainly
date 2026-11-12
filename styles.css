@@ -1468,3 +1468,5 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 .pose-slot-wrap { position: relative; display: grid; }
 .pose-slot__x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 13px; display: grid; place-items: center; }
 .pose-slot__x.is-undo { width: auto; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.sync-form { display: grid; gap: 10px; }
+.sync-form .field { margin: 0; }

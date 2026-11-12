@@ -3,6 +3,7 @@
   'use strict';
 
   const STORE_KEY = 'gainly:v1';
+  let sync = null; // cloud sync (sync.js), set up further down
   // Eenmalig: gegevens van de oude naam (Vorm) overnemen als die er nog zijn.
   try {
     for (const k of ['v1', 'snapshots', 'theme']) {
@@ -146,7 +147,8 @@
     } catch { /* herstelpunt overslaan */ }
   }
 
-  function save({ allowEmpty = false } = {}) {
+  function save(opts) { saveLocal(opts); if (sync) sync.changed(); }
+  function saveLocal({ allowEmpty = false } = {}) {
     try {
       // Nooit een gevulde opslag stilletjes vervangen door een lege.
       if (!allowEmpty && !state.entries.length) {
@@ -791,6 +793,8 @@
 
       ${themeHTML()}
 
+      ${sync ? sync.settingsHTML() : ''}
+
       <div class="card">
         <h2 class="card__title" style="margin-bottom:6px">Backup</h2>
         <p class="prose" style="margin-bottom:14px">Your data lives only on this device (${plural(state.entries.length, 'measurement', 'measurements')}${state.gym && state.gym.workouts && state.gym.workouts.length ? `, ${plural(state.gym.workouts.length, 'workout', 'workouts')}` : ''}). ${s.lastExport ? `Last backup: ${fmtDate(s.lastExport)}.` : '<strong style="color:var(--bad)">No backup made yet.</strong>'} Save one now and then to Files or iCloud Drive; it’s the only copy outside the app.</p>
@@ -837,8 +841,10 @@
     };
     return {
       all: () => run('readonly', (s) => s.getAll()),
-      put: (p) => run('readwrite', (s) => s.put(p)),
-      del: (id) => run('readwrite', (s) => s.delete(id)),
+      put: (p) => run('readwrite', (s) => s.put(p)).then((r) => { if (sync) sync.photoPut(p.id); return r; }),
+      del: (id) => run('readwrite', (s) => s.delete(id)).then((r) => { if (sync) sync.photoDel(id); return r; }),
+      rawPut: (p) => run('readwrite', (s) => s.put(p)),
+      rawDel: (id) => run('readwrite', (s) => s.delete(id)),
       clear: () => run('readwrite', (s) => s.clear()),
     };
   })();
@@ -1518,6 +1524,18 @@
     });
     Object.assign(RENDER, food.views);
     Object.assign(TITLES, food.titles);
+  }
+
+  // Cloud sync (sync.js): everything stays local first, Supabase gets a copy in the background
+  if (window.GainlySync) {
+    sync = window.GainlySync({
+      $, esc, toast, ask,
+      getState: () => state,
+      setState: (d) => { state = normalize(d); saveLocal({ allowEmpty: true }); applyTheme(); render(); },
+      snapshot: (reason) => { try { snapshot(reason); } catch { /* ok */ } },
+      photos: { all: () => PhotoDB.all(), put: (p) => PhotoDB.rawPut(p), del: (id) => PhotoDB.rawDel(id) },
+      reloadPhotos: async () => { for (const id of [...photoUrls.keys()]) dropUrl(id); await loadPhotos(); render(); },
+    });
   }
 
   buildMeasureFields();
