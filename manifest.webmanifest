@@ -1,7 +1,7 @@
 {
   "name": "Vorm — progressie",
   "short_name": "Vorm",
-  "description": "Volg je gewicht, lichaamsmaten en krachtprogressie.",
+  "description": "Volg je gewicht en lichaamsmaten.",
   "lang": "nl",
   "start_url": "./",
   "scope": "./",

@@ -1,4 +1,4 @@
-/* Vorm — gewicht, lichaamsmaten en krachtprogressie. Alles lokaal (localStorage). */
+/* Vorm — gewicht en lichaamsmaten. Alles lokaal (localStorage). */
 (() => {
   'use strict';
 
@@ -27,9 +27,6 @@
   const M = Object.fromEntries(METRICS.map((m) => [m.key, m]));
   const TAPE = METRICS.filter((m) => m.unit === 'cm');
 
-  const EXERCISES = ['Bankdrukken', 'Squat', 'Deadlift', 'Overhead press', 'Barbell row', 'Pull-ups',
-    'Lat pulldown', 'Leg press', 'Hip thrust', 'Romanian deadlift', 'Dumbbell press', 'Biceps curl', 'Triceps pushdown'];
-
   const RANGES = [
     { key: '1m', label: '1M', days: 31 },
     { key: '3m', label: '3M', days: 92 },
@@ -38,7 +35,7 @@
     { key: 'all', label: 'Alles', days: Infinity },
   ];
 
-  const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', gym: 'Gym', settings: 'Instellingen' };
+  const TITLES = { overview: 'Overzicht', log: 'Metingen', compare: 'Vergelijk', settings: 'Instellingen' };
 
   /* ---------------- Helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -78,14 +75,13 @@
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
       if (s && Array.isArray(s.entries)) return normalize(s);
     } catch { /* leeg of corrupt */ }
-    return { entries: [], lifts: [], settings: {} };
+    return { entries: [], settings: {} };
   }
   function normalize(s) {
     return {
       entries: (s.entries || []).filter((e) => e && /^\d{4}-\d{2}-\d{2}$/.test(e.date)).map((e) => ({
         id: e.id || uid(), date: e.date, note: e.note || '', values: e.values || {},
       })),
-      lifts: (s.lifts || []).filter((l) => l && l.exercise && l.date).map((l) => ({ id: l.id || uid(), ...l })),
       settings: s.settings || {},
     };
   }
@@ -95,7 +91,7 @@
     catch { toast('Opslaan mislukt: opslag vol of geblokkeerd'); }
   }
 
-  const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null, exercise: null };
+  const ui = { view: 'overview', metric: 'weight', range: 'all', cmpA: null, cmpB: null };
   try { Object.assign(ui, JSON.parse(sessionStorage.getItem('vorm:ui')) || {}); } catch { /* ok */ }
   const saveUi = () => { try { sessionStorage.setItem('vorm:ui', JSON.stringify(ui)); } catch { /* ok */ } };
 
@@ -397,77 +393,6 @@
       <p class="hint">Een kleine datum onder een waarde betekent dat die maat op die dag niet gemeten is; dan staat de meest recente meting ervoor.</p>`;
   }
 
-  /* ---------------- Gym ---------------- */
-  const e1rm = (w, r) => (r <= 1 ? w : w * (1 + r / 30));
-  const exercises = () => [...new Set(state.lifts.map((l) => l.exercise))].sort((a, b) => a.localeCompare(b, 'nl'));
-
-  function renderGym() {
-    const el = viewEl('gym');
-    if (!state.lifts.length) {
-      el.innerHTML = emptyState('Volg je kracht', 'Log per oefening je zwaarste werkset. Zo zie je je geschatte 1RM groeien, ook terwijl je afvalt.', 'add-lift', 'Oefening loggen');
-      return;
-    }
-    const exs = exercises();
-    if (!exs.includes(ui.exercise)) {
-      const latest = [...state.lifts].sort((a, b) => b.date.localeCompare(a.date))[0];
-      ui.exercise = latest.exercise;
-    }
-    const logs = state.lifts.filter((l) => l.exercise === ui.exercise).sort((a, b) => a.date.localeCompare(b.date));
-    const weighted = logs.some((l) => l.weight > 0);
-    const byDate = new Map();
-    for (const l of logs) {
-      const v = weighted ? e1rm(l.weight || 0, l.reps) : l.reps;
-      if (!byDate.has(l.date) || byDate.get(l.date) < v) byDate.set(l.date, v);
-    }
-    const pts = [...byDate].map(([date, value]) => ({ date, value }));
-    const best = Math.max(...pts.map((p) => p.value));
-    const heaviest = Math.max(...logs.map((l) => l.weight || 0));
-    const firstV = pts[0].value, lastV = pts[pts.length - 1].value;
-    const gain = pts.length > 1 ? lastV - firstV : null;
-
-    const today = todayISO();
-    const days30 = new Set(state.lifts.filter((l) => l.date > addDays(today, -30)).map((l) => l.date)).size;
-    const days7 = new Set(state.lifts.filter((l) => l.date > addDays(today, -7)).map((l) => l.date)).size;
-
-    const recent = [...state.lifts].sort((a, b) => b.date.localeCompare(a.date) || (b.t || 0) - (a.t || 0)).slice(0, 40);
-    const groups = {};
-    for (const l of recent) (groups[l.date] ||= []).push(l);
-
-    const unitM = { dir: 1, unit: weighted ? 'kg' : 'reps' };
-    el.innerHTML = `
-      <div class="stats">
-        <div class="stat"><span class="stat__label">Trainingen week</span><span class="stat__value">${days7}</span></div>
-        <div class="stat"><span class="stat__label">30 dagen</span><span class="stat__value">${days30}</span></div>
-        <div class="stat"><span class="stat__label">Oefeningen</span><span class="stat__value">${exs.length}</span></div>
-      </div>
-      <div class="card">
-        <div class="card__head">
-          <select class="select" id="exerciseSelect" aria-label="Kies een oefening">
-            ${exs.map((x) => `<option ${x === ui.exercise ? 'selected' : ''}>${esc(x)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="stats" style="margin-bottom:14px">
-          <div class="stat"><span class="stat__label">${weighted ? 'Beste 1RM*' : 'Meeste reps'}</span><span class="stat__value">${fmt(best, weighted ? 1 : 0)} ${weighted ? 'kg' : ''}</span></div>
-          <div class="stat"><span class="stat__label">${weighted ? 'Zwaarste' : 'Sessies'}</span><span class="stat__value">${weighted ? fmt(heaviest) + ' kg' : pts.length}</span></div>
-          <div class="stat"><span class="stat__label">Progressie</span><span class="stat__value">${gain != null ? deltaHTML(unitM, gain, weighted ? 1 : 0) : '—'}</span></div>
-        </div>
-        <div class="chart" id="gymChart"></div>
-        ${weighted ? '<p class="hint" style="margin:10px 0 0">* Geschatte 1RM per sessie (Epley: gewicht × (1 + reps/30)).</p>' : ''}
-      </div>
-      <h2 class="section-title">Recent</h2>
-      ${Object.entries(groups).map(([date, list]) => `
-        <div class="list">
-          <div class="list__item" style="min-height:0;padding-bottom:6px"><span class="eyebrow">${esc(DF_WEEKDAY.format(toDate(date)))}</span></div>
-          ${list.map((l) => `<button class="list__item" data-edit-lift="${l.id}">
-            <div class="list__main"><div class="list__title">${esc(l.exercise)}</div>
-            <div class="list__sub">${l.sets ? l.sets + ' × ' : ''}${l.reps} reps${l.weight ? ' · ' + fmt(l.weight) + ' kg' : ''}</div></div>
-            ${l.weight ? `<div class="list__end">${fmt(e1rm(l.weight, l.reps))}<small>1RM*</small></div>` : ''}${chev}
-          </button>`).join('')}
-        </div>`).join('')}`;
-
-    lineChart($('#gymChart'), pts, { unit: weighted ? 'kg' : 'reps', digits: weighted ? 1 : 0, label: ui.exercise });
-  }
-
   /* ---------------- Settings ---------------- */
   function renderSettings() {
     const el = viewEl('settings');
@@ -484,7 +409,7 @@
 
       <div class="card">
         <h2 class="card__title" style="margin-bottom:6px">Back-up</h2>
-        <p class="prose" style="margin-bottom:14px">Je gegevens staan alleen op dit toestel (${plural(state.entries.length, 'meting', 'metingen')}, ${plural(state.lifts.length, 'oefening', 'oefeningen')}). Maak af en toe een back-up naar Bestanden of iCloud Drive.</p>
+        <p class="prose" style="margin-bottom:14px">Je gegevens staan alleen op dit toestel (${plural(state.entries.length, 'meting', 'metingen')}). Maak af en toe een back-up naar Bestanden of iCloud Drive.</p>
         <div class="button-row">
           <button class="button" data-action="export">Exporteer</button>
           <button class="button" data-action="import">Importeer</button>
@@ -511,9 +436,10 @@
       </div>`;
   }
 
-  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, gym: renderGym, settings: renderSettings };
+  const RENDER = { overview: renderOverview, log: renderLog, compare: renderCompare, settings: renderSettings };
 
   function render() {
+    if (!RENDER[ui.view]) ui.view = 'overview';
     for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== ui.view;
     for (const t of document.querySelectorAll('.tab')) {
       if (t.dataset.tab === ui.view) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
@@ -522,7 +448,6 @@
     document.title = ui.view === 'overview' ? 'Vorm' : `${TITLES[ui.view]} · Vorm`;
     const fab = $('#fab');
     fab.hidden = ui.view === 'settings' || ui.view === 'compare';
-    fab.setAttribute('aria-label', ui.view === 'gym' ? 'Oefening loggen' : 'Nieuwe meting');
     RENDER[ui.view]();
     saveUi();
   }
@@ -621,78 +546,7 @@
     render();
   });
 
-  /* ---------------- Lift sheet ---------------- */
-  const liftSheet = $('#liftSheet');
-  const liftForm = $('#liftForm');
-  let editingLift = null;
-
-  function openLift(lift = null) {
-    editingLift = lift;
-    liftForm.reset();
-    for (const i of liftForm.querySelectorAll('input')) i.removeAttribute('aria-invalid');
-    $('#liftTitle').textContent = lift ? 'Oefening bewerken' : 'Oefening loggen';
-    $('#liftDelete').hidden = !lift;
-    $('#exerciseList').innerHTML = [...new Set([...exercises(), ...EXERCISES])].map((x) => `<option value="${esc(x)}">`).join('');
-    const ex = lift ? lift.exercise : ui.view === 'gym' && ui.exercise ? ui.exercise : '';
-    liftForm.exercise.value = ex;
-    liftForm.date.value = lift ? lift.date : todayISO();
-    if (lift) {
-      liftForm.weight.value = lift.weight ? fmt(lift.weight) : '';
-      liftForm.sets.value = lift.sets || '';
-      liftForm.reps.value = lift.reps;
-    } else if (ex) {
-      const prev = state.lifts.filter((l) => l.exercise === ex).sort((a, b) => b.date.localeCompare(a.date))[0];
-      if (prev) {
-        liftForm.weight.placeholder = prev.weight ? fmt(prev.weight) : '0';
-        liftForm.sets.placeholder = prev.sets || '3';
-        liftForm.reps.placeholder = prev.reps;
-      }
-    }
-    liftSheet.showModal();
-  }
-
-  liftForm.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const exercise = liftForm.exercise.value.trim().replace(/\s+/g, ' ');
-    const date = liftForm.date.value;
-    const weight = parseNum(liftForm.weight.value);
-    const sets = parseNum(liftForm.sets.value);
-    const reps = parseNum(liftForm.reps.value);
-    const checks = [
-      [liftForm.exercise, !exercise],
-      [liftForm.date, !date],
-      [liftForm.weight, Number.isNaN(weight) || (weight != null && (weight < 0 || weight > 1000))],
-      [liftForm.sets, Number.isNaN(sets) || (sets != null && (sets < 1 || sets > 50 || !Number.isInteger(sets)))],
-      [liftForm.reps, reps == null || Number.isNaN(reps) || reps < 1 || reps > 200 || !Number.isInteger(reps)],
-    ];
-    let first = null;
-    for (const [input, invalid] of checks) {
-      input.setAttribute('aria-invalid', invalid ? 'true' : 'false');
-      if (invalid && !first) first = input;
-    }
-    if (first) { first.focus(); toast('Controleer de rood omrande velden'); return; }
-    // hoofdletters gelijk trekken met een bestaande oefening
-    const known = exercises().find((x) => x.toLowerCase() === exercise.toLowerCase()) || exercise;
-    const data = { exercise: known, date, weight: weight ? Math.round(weight * 100) / 100 : 0, sets: sets || null, reps };
-    if (editingLift) Object.assign(editingLift, data);
-    else state.lifts.push({ id: uid(), t: Date.now(), ...data });
-    ui.exercise = known;
-    save();
-    liftSheet.close();
-    toast(editingLift ? 'Bijgewerkt' : `${known} gelogd`);
-    render();
-  });
-
-  $('#liftDelete').addEventListener('click', () => {
-    if (!editingLift || !confirm(`${editingLift.exercise} van ${fmtDate(editingLift.date)} verwijderen?`)) return;
-    state.lifts = state.lifts.filter((l) => l !== editingLift);
-    save();
-    liftSheet.close();
-    toast('Verwijderd');
-    render();
-  });
-
-  for (const dlg of [measureSheet, liftSheet]) {
+  for (const dlg of [measureSheet]) {
     dlg.addEventListener('click', (ev) => {
       if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close();
     });
@@ -720,7 +574,7 @@
       const data = JSON.parse(await file.text());
       if (!data || !Array.isArray(data.entries)) throw new Error('format');
       const next = normalize(data);
-      if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')} en ${plural(next.lifts.length, 'oefening', 'oefeningen')} importeren? Dit vervangt je huidige gegevens.`)) return;
+      if (!confirm(`Back-up met ${plural(next.entries.length, 'meting', 'metingen')} importeren? Dit vervangt je huidige gegevens.`)) return;
       state = next;
       save();
       toast('Back-up geïmporteerd');
@@ -731,7 +585,7 @@
   }
 
   function demoData() {
-    const entries = [], lifts = [];
+    const entries = [];
     const start = addDays(todayISO(), -7 * 16);
     const base = { weight: 94.8, bodyfat: 27.5, neck: 41, shoulders: 120, chest: 108, waist: 102, belly: 106, hips: 108, armL: 36, armR: 36.5, forearmL: 30, forearmR: 30.5, thighL: 63, thighR: 63.5, calfL: 40, calfR: 40 };
     const rate = { weight: -0.55, bodyfat: -0.32, neck: -0.08, shoulders: 0.05, chest: -0.25, waist: -0.55, belly: -0.6, hips: -0.35, armL: 0.04, armR: 0.04, forearmL: 0, forearmR: 0, thighL: -0.2, thighR: -0.2, calfL: -0.05, calfR: -0.05 };
@@ -746,15 +600,7 @@
       }
       entries.push({ id: uid(), date, values, note: '' });
     }
-    const prog = { Bankdrukken: [70, 1.25], Squat: [90, 2.5], Deadlift: [110, 2.5] };
-    for (let w = 0; w <= 16; w++) {
-      for (const [ex, [b, inc]] of Object.entries(prog)) {
-        const date = addDays(start, w * 7 + (ex === 'Squat' ? 2 : ex === 'Deadlift' ? 4 : 0));
-        if (date > todayISO()) continue;
-        lifts.push({ id: uid(), date, exercise: ex, weight: b + inc * Math.floor(w * 0.8), sets: 3, reps: 5 + (w % 3) });
-      }
-    }
-    return { entries, lifts, settings: { height: 181, goalWeight: 82 } };
+    return { entries, settings: { height: 181, goalWeight: 82 } };
   }
 
   /* ---------------- Events ---------------- */
@@ -771,18 +617,16 @@
       return;
     }
     if (t.dataset.editEntry) return openMeasure(state.entries.find((e) => e.id === t.dataset.editEntry));
-    if (t.dataset.editLift) return openLift(state.lifts.find((l) => l.id === t.dataset.editLift));
     switch (t.dataset.action) {
       case 'add-measure': return openMeasure();
-      case 'add-lift': return openLift();
       case 'export': return exportData();
       case 'import': return $('#importFile').click();
       case 'demo':
-        if ((state.entries.length || state.lifts.length) && !confirm('Demodata vervangt je huidige gegevens. Doorgaan?')) return;
+        if (state.entries.length && !confirm('Demodata vervangt je huidige gegevens. Doorgaan?')) return;
         state = demoData(); save(); toast('Demodata geladen'); return go('overview');
       case 'wipe':
-        if (!confirm('Alle metingen en oefeningen definitief wissen? Maak eerst een back-up als je twijfelt.')) return;
-        state = { entries: [], lifts: [], settings: state.settings }; save(); toast('Alles gewist'); return render();
+        if (!confirm('Alle metingen definitief wissen? Maak eerst een back-up als je twijfelt.')) return;
+        state = { entries: [], settings: state.settings }; save(); toast('Alles gewist'); return render();
     }
   });
 
@@ -791,7 +635,6 @@
     if (t.id === 'metricSelect') { ui.metric = t.value; render(); }
     else if (t.id === 'cmpA') { ui.cmpA = t.value; render(); }
     else if (t.id === 'cmpB') { ui.cmpB = t.value; render(); }
-    else if (t.id === 'exerciseSelect') { ui.exercise = t.value; render(); }
     else if (t.id === 'importFile' && t.files[0]) { importData(t.files[0]); t.value = ''; }
   });
 
@@ -811,7 +654,7 @@
     toast('Profiel bewaard');
   });
 
-  $('#fab').addEventListener('click', () => (ui.view === 'gym' ? openLift() : openMeasure()));
+  $('#fab').addEventListener('click', () => openMeasure());
 
   let toastTimer;
   function toast(msg) {
@@ -828,7 +671,7 @@
     resizeTimer = setTimeout(() => {
       if (window.innerWidth === lastW) return;
       lastW = window.innerWidth;
-      if (ui.view === 'overview' || ui.view === 'gym') RENDER[ui.view]();
+      if (ui.view === 'overview') RENDER[ui.view]();
     }, 150);
   });
 

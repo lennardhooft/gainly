@@ -330,7 +330,6 @@ svg { display: block; }
 .field input::placeholder, .field textarea::placeholder { color: var(--faint); }
 .field input:focus, .field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .field input[aria-invalid="true"] { border-color: var(--danger); }
-.field-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
 .fieldset { border: 0; padding: 0; margin: 6px 0 4px; }
 .fieldset legend { font: 600 13px/1 var(--font); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 0; margin-bottom: 12px; }
@@ -372,7 +371,7 @@ svg { display: block; }
   inset: auto 0 0 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: 4px 4px calc(var(--safe-bottom) + 2px);
   background: color-mix(in srgb, var(--surface) 84%, transparent);
   -webkit-backdrop-filter: saturate(1.6) blur(20px);
