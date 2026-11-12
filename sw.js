@@ -1,9 +1,8 @@
 // Offline-cache voor de app. Een nieuwe versie (andere VERSION) wordt op de achtergrond klaargezet,
 // maar pas actief als de gebruiker in de app op "Bijwerken" tikt. Gegevens (localStorage) raakt dit nooit aan.
-const VERSION = 'gainly-v20';
+const VERSION = 'gainly-v21';
 const SHELL = ['./', 'index.html', 'styles.css', 'gym.js', 'app.js', 'exercises.json', 'manifest.webmanifest',
-  'icons/gainly-192.png', 'icons/gainly-512.png', 'icons/gainly-180.png', 'icons/logo.webp',
-  'drawings/Barbell_Bench_Press_-_Medium_Grip/0.svg', 'drawings/Barbell_Bench_Press_-_Medium_Grip/1.svg'];
+  'icons/gainly-192.png', 'icons/gainly-512.png', 'icons/gainly-180.png', 'icons/logo.webp'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
@@ -41,6 +40,18 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  // Tekeningen: pas laden als je ze bekijkt, daarna offline beschikbaar (ook na updates).
+  if (url.pathname.includes('/drawings/')) {
+    e.respondWith((async () => {
+      const cache = await caches.open(IMG_CACHE);
+      const hit = await cache.match(e.request);
+      if (hit) return hit;
+      const res = await fetch(e.request);
+      if (res.ok) cache.put(e.request, res.clone());
+      return res;
+    })());
+    return;
+  }
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
     const hit = await cache.match(e.request, { ignoreSearch: true });

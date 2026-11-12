@@ -1071,7 +1071,7 @@ body.has-rest .views { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)
 /* Getekende versies: eigen kleuren, altijd op donker (lichte lijnen) */
 .ex-thumb.is-drawn, .ex-visual.is-drawn { background: #1E1C1A; }
 .is-drawn img { filter: none; }
-.ex-thumb.is-drawn img { object-fit: contain; }
+.ex-thumb.is-drawn img { object-fit: cover; transform: scale(1.15); }
 .ex-thumb span { font-weight: 700; color: var(--muted); background: var(--surface-2); width: 100%; height: 100%; display: grid; place-items: center; }
 .ex-card__head .ex-thumb { width: 38px; height: 38px; border-radius: 9px; }
 .pick .ex-thumb { width: 40px; height: 40px; }

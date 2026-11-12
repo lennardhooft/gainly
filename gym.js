@@ -208,9 +208,8 @@ window.GainlyGym = function (core) {
   }
 
   const infoOf = (ex) => (ex.img ? dbInfo.get(ex.img) : null);
-  // Getekende versies (vector, achtergrond weggeknipt). Proef: voorlopig alleen Bench Press.
-  const DRAWN = new Set(['Barbell_Bench_Press_-_Medium_Grip']);
-  const isDrawn = (ex) => !!ex.img && DRAWN.has(ex.img);
+  // Drawn versions (vector, background removed): flag `d` in exercises.json. Otherwise the photo is used.
+  const isDrawn = (ex) => !!ex.img && !!(dbInfo.get(ex.img) || {}).d;
   function imgUrl(ex, frame = 0) {
     if (!ex.img) return null;
     if (isDrawn(ex)) return `drawings/${ex.img}/${frame}.svg`;
