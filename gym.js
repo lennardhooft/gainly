@@ -314,13 +314,17 @@ window.GainlyGym = function (core) {
 
   /* ---------------- Start / finish a workout ---------------- */
   const blankSets = (n, types) => (types ? types.map((t) => (t ? { t } : {})) : Array.from({ length: Math.max(1, n || 3) }, () => ({})));
+  // Planned sets of a routine item: [{ t, w, r, s }]. Older routines only had a count (n) and types.
+  const routineSets = (it) => (Array.isArray(it.sets) && it.sets.length ? it.sets : blankSets(it.n, it.types).map((x) => ({ t: x.t || '' })));
+  const cleanSet = (x) => { const o = {}; if (x.t) o.t = x.t; for (const k of ['w', 'r', 's']) if (x[k] != null && x[k] !== '') o[k] = x[k]; return o; };
 
   async function startWorkout({ name = 'Workout', items = [], routineId = null } = {}) {
     const g = G();
     if (g.active && !await core.ask('A workout is already running. Discard it and start a new one?', 'Discard')) return;
     g.active = {
       id: uid(), name, start: Date.now(), routineId, note: '',
-      items: items.map((it) => ({ exId: it.exId, rest: it.rest ?? 90, sets: blankSets(it.n, it.types) })),
+      // Planned values (pw/pr/ps) show as hints and are used when you tick a set without typing.
+      items: items.map((it) => ({ exId: it.exId, rest: it.rest ?? 90, sets: routineSets(it).map((x) => ({ ...(x.t ? { t: x.t } : {}), pw: x.w ?? null, pr: x.r ?? null, ps: x.s ?? null })) })),
     };
     saveNow();
     ensureAudio();
@@ -340,7 +344,7 @@ window.GainlyGym = function (core) {
     if (open && !await core.ask(`${plural(open, 'set isn’t', 'sets aren’t')} ticked off and won’t be saved. Finish the workout?`, 'Finish')) return;
     const wk = {
       id: a.id, name: (a.name || 'Workout').trim() || 'Workout', start: a.start, end: Date.now(), routineId: a.routineId || null, note: a.note || '',
-      items: a.items.map((it) => ({ exId: it.exId, sets: it.sets.filter((st) => st.d).map(({ d, ...st }) => st) })).filter((it) => it.sets.length),
+      items: a.items.map((it) => ({ exId: it.exId, sets: it.sets.filter((st) => st.d).map(({ d, pw, pr, ps, ...st }) => st) })).filter((it) => it.sets.length),
     };
     wk.prs = computePRs(wk);
     g.workouts.push(wk);
@@ -419,7 +423,8 @@ window.GainlyGym = function (core) {
       const rects = items.map((el) => el.getBoundingClientRect());
       const scroller = list.closest('.sheet__body') || document.scrollingElement;
       const startScroll = scroller.scrollTop, startY = ev.clientY;
-      const step = rects.length > 1 ? rects[1].top - rects[0].top : rects[0].height;
+      const gap = rects.length > 1 ? Math.max(0, rects[1].top - rects[0].bottom) : 0;
+      const step = rects[from].height + gap;
       let lastY = ev.clientY, to = from, raf = 0, done = false;
       item.classList.add('is-dragging');
       list.classList.add('is-sorting');
@@ -472,7 +477,11 @@ window.GainlyGym = function (core) {
   const restText = (s) => (!s ? 'Off' : s < 60 ? `${s}s` : s % 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s / 60} min`);
   const openMenus = new Set();
 
-  function sourceFor(it, j, prev) { return prev[j] || (j > 0 ? it.sets[j - 1] : null); }
+  function sourceFor(it, j, prev) {
+    const st = it.sets[j];
+    if (st && (st.pw != null || st.pr != null || st.ps != null)) return { w: st.pw, r: st.pr, s: st.ps };
+    return prev[j] || (j > 0 ? it.sets[j - 1] : null);
+  }
   const minutes = (s) => (s == null ? '' : fmt(s / 60, s % 60 ? 1 : 0));
 
   function exCardHTML(it, i) {
@@ -572,17 +581,14 @@ window.GainlyGym = function (core) {
       ${g.routines.length ? `<div class="routine-list" id="routineCards">${g.routines.map((r) => {
         const ld = lastDone(r.id);
         const names = r.items.map((it) => exById(it.exId).name);
-        return `<div class="card routine" data-sort>
+        return `<div class="card routine" data-sort data-g="open-routine" data-id="${r.id}" role="button" tabindex="0">
           ${GRIP_HTML}
           <div class="routine__main">
             <h3 class="routine__name">${esc(r.name)}</h3>
             <p class="routine__sub">${esc(names.slice(0, 4).join(', '))}${names.length > 4 ? ` +${names.length - 4}` : ''}</p>
             <p class="routine__meta">${plural(r.items.length, 'exercise', 'exercises')}${ld ? ` · last ${fmtShort(dayOf(ld.start))}` : ''}</p>
           </div>
-          <div class="routine__actions">
-            <button type="button" class="button button--primary" data-g="start-routine" data-id="${r.id}">Start</button>
-            <button type="button" class="inline-link" data-g="edit-routine" data-id="${r.id}">Edit</button>
-          </div>
+          ${chev}
         </div>`;
       }).join('')}</div>` : '<div class="card"><p class="prose">Create a routine for your regular workouts, like Push, Pull and Legs. Then you start them with one tap, with your previous weights alongside.</p></div>'}
       <div class="card">
@@ -921,12 +927,63 @@ window.GainlyGym = function (core) {
     makeSortable($('#reorderList'), (from, to) => { moveItem(reorderDraft, from, to); renderReorder(); });
   }
 
+  /* ---------------- Sheet: routine page ---------------- */
+  const routineView = $('#routineView');
+  let rvId = null, rvChart = 'vol';
+  const routineWorkouts = (r) => history().filter((w) => w.routineId === r.id || (!w.routineId && norm(w.name) === norm(r.name))).reverse();
+  function setTableHTML(ex, sets) {
+    let n = 0;
+    const head = ex.type === 'time' ? '<span>Set</span><span>Time</span><span></span>' : `<span>Set</span><span>${ex.type === 'bw' ? '+kg' : 'kg'}</span><span>Reps</span>`;
+    return `<div class="rv-sets"><div class="rv-row rv-row--head">${head}</div>
+      ${sets.map((x) => `<div class="rv-row"><span class="set-type--${x.t || 'n'}">${TYPE_LABEL[x.t] || ++n}</span>${ex.type === 'time'
+        ? `<span>${x.s ? clock(x.s) : '—'}</span><span></span>`
+        : `<span>${x.w != null ? fmtKg(x.w) : '—'}</span><span>${x.r ?? '—'}</span>`}</div>`).join('')}</div>`;
+  }
+  function openRoutineView(id) {
+    rvId = id;
+    renderRoutineView();
+    if (!routineView.open) routineView.showModal();
+    $('#routineViewBody').scrollTop = 0;
+    drawRoutineChart();
+  }
+  function renderRoutineView() {
+    const r = G().routines.find((x) => x.id === rvId);
+    if (!r) { routineView.close(); return; }
+    const ws = routineWorkouts(r);
+    $('#routineViewBody').innerHTML = `
+      <h2 class="rv-title">${esc(r.name)}</h2>
+      <p class="eyebrow" style="margin-bottom:14px">${plural(r.items.length, 'exercise', 'exercises')} · ${plural(r.items.reduce((a, it) => a + routineSets(it).length, 0), 'set', 'sets')}${ws.length ? ` · done ${plural(ws.length, 'time', 'times')}` : ''}</p>
+      <button type="button" class="button button--primary" data-g="start-routine" data-id="${r.id}">Start routine</button>
+      ${ws.length > 1 ? `<div class="segmented segmented--full" role="group" aria-label="Chart" style="margin:16px 0 10px">
+          <button type="button" data-g="rv-chart" data-k="vol" aria-pressed="${rvChart === 'vol'}">Volume</button>
+          <button type="button" data-g="rv-chart" data-k="reps" aria-pressed="${rvChart === 'reps'}">Reps</button>
+          <button type="button" data-g="rv-chart" data-k="dur" aria-pressed="${rvChart === 'dur'}">Duration</button>
+        </div><div class="chart" id="rvChart"></div>` : ''}
+      <div class="section-row" style="margin:18px 0 6px"><h3 class="section-title">Exercises</h3><button type="button" class="inline-link" data-g="edit-routine" data-id="${r.id}">Edit routine</button></div>
+      ${r.items.map((it) => {
+        const ex = exById(it.exId);
+        return `<div class="rv-ex">
+          <button type="button" class="rv-ex__head" data-g="ex-info" data-ex="${esc(ex.id)}">${thumbHTML(ex)}<span>${esc(ex.name)}</span></button>
+          <p class="rv-ex__rest">⏱ Rest timer: ${restText(it.rest ?? 90)}</p>
+          ${setTableHTML(ex, routineSets(it))}
+        </div>`;
+      }).join('')}`;
+  }
+  function drawRoutineChart() {
+    const el = $('#rvChart');
+    const r = G().routines.find((x) => x.id === rvId);
+    if (!el || !r) return;
+    const pts = routineWorkouts(r).map((w) => ({ date: dayOf(w.start), value: rvChart === 'vol' ? Math.round(itemsVol(w.items)) : rvChart === 'reps' ? w.items.reduce((a, it) => a + it.sets.filter(isWork).reduce((b, st) => b + (st.r || 0), 0), 0) : w.end ? Math.round((w.end - w.start) / 60000) : 0 })).filter((p) => p.value > 0);
+    lineChart(el, pts, { unit: rvChart === 'vol' ? 'kg' : rvChart === 'reps' ? 'reps' : 'min', label: r.name, digits: 0, height: 190 });
+  }
+
   /* ---------------- Sheet: edit routine ---------------- */
   const routineSheet = $('#routineSheet');
   let draft = null;
   function openRoutine(id) {
     const r = id ? G().routines.find((x) => x.id === id) : null;
     draft = r ? JSON.parse(JSON.stringify(r)) : { id: uid(), name: '', items: [], isNew: true };
+    draft.items = draft.items.map((it) => ({ exId: it.exId, rest: it.rest ?? 90, sets: routineSets(it).map((x) => ({ ...x })) }));
     $('#routineTitle').textContent = r ? 'Edit routine' : 'New routine';
     renderRoutine();
     routineSheet.showModal();
@@ -934,17 +991,32 @@ window.GainlyGym = function (core) {
   function renderRoutine() {
     $('#routineBody').innerHTML = `
       <label class="field"><span class="field__label">Name</span><input data-gin="r-name" value="${esc(draft.name)}" placeholder="E.g. Push" autocomplete="off"></label>
-      ${draft.items.length ? `<div class="list sort-list" id="routineList" style="margin-bottom:12px">${draft.items.map((it, i) => {
+      ${draft.items.length ? `<div class="sort-list r-cards" id="routineList">${draft.items.map((it, i) => {
         const ex = exById(it.exId);
-        return `<div class="r-item" data-i="${i}" data-sort>
-          <div class="r-item__main"><button type="button" class="drag-handle" aria-label="Drag to reorder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg></button>${thumbHTML(ex)}<div><div class="list__title">${esc(ex.name)}</div><div class="list__sub">${ex.group} · rest ${restText(it.rest ?? 90)}</div></div></div>
-          <div class="stepper" aria-label="Number of sets">
-            <button type="button" data-g="r-minus" aria-label="Fewer sets">−</button><span>${it.n} sets</span><button type="button" data-g="r-plus" aria-label="More sets">+</button>
-          </div>
-          <button type="button" class="r-item__del" data-g="r-del" aria-label="Remove ${esc(ex.name)}">×</button>
+        let n = 0;
+        return `<div class="r-card" data-i="${i}" data-sort>
+          <div class="r-card__head">${GRIP_HTML}${thumbHTML(ex)}<span class="r-card__name">${esc(ex.name)}</span>
+            <button type="button" class="r-item__del" data-g="r-del" aria-label="Remove ${esc(ex.name)}">×</button></div>
+          <label class="ex-menu__rest r-card__rest">Rest timer <select data-gin="r-rest">${REST_OPTS.map((x) => `<option value="${x}" ${x === (it.rest ?? 90) ? 'selected' : ''}>${restText(x)}</option>`).join('')}</select></label>
+          <div class="r-set r-set--head${ex.type === 'time' ? ' r-set--time' : ''}"><span>Set</span>${ex.type === 'time' ? '<span>Minutes</span>' : `<span>${ex.type === 'bw' ? '+kg' : 'kg'}</span><span>Reps</span>`}</div>
+          ${it.sets.map((x, j) => `<div class="r-set${ex.type === 'time' ? ' r-set--time' : ''}" data-j="${j}">
+            <label class="set-type set-type--${x.t || 'n'}"><span>${TYPE_LABEL[x.t] || ++n}</span>
+              <select data-gin="r-t" aria-label="Set type ${j + 1}">
+                <option value="" ${!x.t ? 'selected' : ''}>Normal set</option>
+                <option value="w" ${x.t === 'w' ? 'selected' : ''}>Warm-up set (W)</option>
+                <option value="d" ${x.t === 'd' ? 'selected' : ''}>Drop set (D)</option>
+                <option value="f" ${x.t === 'f' ? 'selected' : ''}>To failure (F)</option>
+                <option value="x">Remove set</option>
+              </select></label>
+            ${ex.type === 'time'
+              ? `<input class="set-in" data-gin="r-s" inputmode="decimal" placeholder="min" value="${minutes(x.s)}" aria-label="Minutes, set ${j + 1}">`
+              : `<input class="set-in" data-gin="r-w" inputmode="decimal" placeholder="${ex.type === 'bw' ? '0' : 'kg'}" value="${fmtKg(x.w)}" aria-label="Kilograms, set ${j + 1}">
+                 <input class="set-in" data-gin="r-r" inputmode="numeric" placeholder="reps" value="${x.r ?? ''}" aria-label="Reps, set ${j + 1}">`}
+          </div>`).join('')}
+          <button type="button" class="ex-card__add" data-g="r-addset">+ Add set</button>
         </div>`;
       }).join('')}</div>` : '<p class="hint">No exercises in this routine yet.</p>'}
-      <button type="button" class="button" data-g="r-add">+ Add exercise</button>
+      <button type="button" class="button" data-g="r-add" style="margin-top:12px">+ Add exercise</button>
       ${draft.isNew ? '' : '<button type="button" class="button button--danger" data-g="r-delete" style="margin-top:12px">Delete routine</button>'}`;
     const list = $('#routineList');
     if (list) makeSortable(list, (from, to) => { moveItem(draft.items, from, to); renderRoutine(); });
@@ -953,7 +1025,7 @@ window.GainlyGym = function (core) {
     const name = (draft.name || '').trim();
     if (!name) { toast('Give your routine a name'); routineSheet.querySelector('[data-gin="r-name"]')?.focus(); return; }
     if (!draft.items.length) { toast('Add at least one exercise'); return; }
-    const { isNew, ...r } = { ...draft, name };
+    const { isNew, ...r } = { ...draft, name, items: draft.items.map((it) => ({ exId: it.exId, rest: it.rest, sets: it.sets.map(cleanSet) })) };
     const g = G();
     const i = g.routines.findIndex((x) => x.id === r.id);
     if (i >= 0) g.routines[i] = r; else g.routines.push(r);
@@ -961,6 +1033,7 @@ window.GainlyGym = function (core) {
     routineSheet.close();
     toast(isNew ? 'Routine created' : 'Routine saved');
     core.render();
+    if (routineView.open) { renderRoutineView(); drawRoutineChart(); }
   }
 
   /* ---------------- Sheet: view workout ---------------- */
@@ -1056,7 +1129,8 @@ window.GainlyGym = function (core) {
             g.custom.push(c); created.push(c); exId = c.id; byName.set(norm(title), exId);
           }
           const sets = (e.sets || []).slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-          return { exId, n: Math.max(1, sets.length), types: sets.length ? sets.map((s) => TYPE[s.type] || '') : undefined, rest: Number.isFinite(e.rest_seconds) ? e.rest_seconds : 90 };
+          return { exId, rest: Number.isFinite(e.rest_seconds) ? e.rest_seconds : 90,
+            sets: (sets.length ? sets : [{}]).map((x) => cleanSet({ t: TYPE[x.type] || '', w: x.weight_kg ?? null, r: x.reps ?? null, s: x.duration_seconds ?? null })) };
         }),
       })).filter((r) => r.items.length);
       const existing = new Set(g.routines.map((r) => r.id));
@@ -1169,9 +1243,12 @@ window.GainlyGym = function (core) {
       case 'start-empty': return startWorkout();
       case 'start-routine': {
         const r = g.routines.find((x) => x.id === b.dataset.id);
+        if (routineView.open) routineView.close();
         if (r) startWorkout({ name: r.name, routineId: r.id, items: r.items });
         return;
       }
+      case 'open-routine': if (ev.target.closest('.drag-handle')) return; return openRoutineView(b.dataset.id);
+      case 'rv-chart': rvChart = b.dataset.k; renderRoutineView(); drawRoutineChart(); return;
       case 'new-routine': return openRoutine(null);
       case 'edit-routine': return openRoutine(b.dataset.id);
       case 'hevy': return $('#hevyFile').click();
@@ -1232,11 +1309,11 @@ window.GainlyGym = function (core) {
       case 'redo': {
         const w = g.workouts.find((x) => x.id === wkOpen); if (!w) return;
         workoutSheet.close();
-        return startWorkout({ name: w.name, routineId: w.routineId, items: w.items.map((it) => ({ exId: it.exId, types: it.sets.map((s) => s.t) })) });
+        return startWorkout({ name: w.name, routineId: w.routineId, items: w.items.map((it) => ({ exId: it.exId, sets: it.sets.map(cleanSet) })) });
       }
       case 'to-routine': {
         const w = g.workouts.find((x) => x.id === wkOpen); if (!w) return;
-        g.routines.push({ id: uid(), name: w.name, items: w.items.map((it) => ({ exId: it.exId, n: it.sets.length, types: it.sets.map((s) => s.t || ''), rest: 90 })) });
+        g.routines.push({ id: uid(), name: w.name, items: w.items.map((it) => ({ exId: it.exId, sets: it.sets.map(cleanSet), rest: 90 })) });
         saveNow(); workoutSheet.close(); toast(`Routine “${w.name}” created`); core.go('gym');
         return;
       }
@@ -1288,14 +1365,17 @@ window.GainlyGym = function (core) {
         return;
       case 'custom-cancel': if (!pk.onDone) { picker.close(); return; } pk.form = false; return renderPicker();
       case 'r-add':
-        return openPicker((ids) => { for (const id of ids) draft.items.push({ exId: id, n: Math.max(1, prevSets(id).filter(isWork).length) || 3, rest: 90 }); renderRoutine(); });
-      case 'r-minus': case 'r-plus': {
-        const it = draft.items[+b.closest('.r-item').dataset.i];
-        it.n = Math.max(1, Math.min(20, it.n + (b.dataset.g === 'r-plus' ? 1 : -1)));
-        if (it.types) { while (it.types.length < it.n) it.types.push(''); it.types.length = it.n; }
+        return openPicker((ids) => {
+          for (const id of ids) { const pv = prevSets(id); draft.items.push({ exId: id, rest: 90, sets: pv.length ? pv.map(cleanSet) : [{}, {}, {}] }); }
+          renderRoutine();
+        });
+      case 'r-addset': {
+        const it = draft.items[+b.closest('.r-card').dataset.i];
+        const last = it.sets[it.sets.length - 1];
+        it.sets.push(last ? { ...last, t: last.t === 'w' ? '' : last.t } : {});
         return renderRoutine();
       }
-      case 'r-del': draft.items.splice(+b.closest('.r-item').dataset.i, 1); return renderRoutine();
+      case 'r-del': draft.items.splice(+b.closest('.r-card').dataset.i, 1); return renderRoutine();
       case 'r-save': return saveRoutine();
       case 'r-delete':
         if (!await core.ask(`Delete routine “${draft.name}”? Your finished workouts stay saved.`, 'Delete')) return;
@@ -1325,6 +1405,12 @@ window.GainlyGym = function (core) {
     else if (k === 'ex-q') { exUi.q = t.value; exUi.shown = 60; $('#exList').innerHTML = exListItems(); }
     else if (k === 'pick-q') { pk.q = t.value; pk.shown = 60; renderPickerList(); }
     else if (k === 'r-name') draft.name = t.value;
+    else if (k === 'r-w' || k === 'r-r' || k === 'r-s') {
+      const it = draft.items[+t.closest('.r-card').dataset.i], x = it.sets[+t.closest('.r-set').dataset.j];
+      const n = parseNum(t.value);
+      if (Number.isNaN(n)) return;
+      if (k === 'r-w') x.w = n; else if (k === 'r-r') x.r = n == null ? null : Math.round(n); else x.s = n == null ? null : Math.round(n * 60);
+    }
   });
 
   document.addEventListener('change', (ev) => {
@@ -1338,6 +1424,13 @@ window.GainlyGym = function (core) {
       if (t.value === 'x') { if (it.sets.length === 1) { toast('An exercise needs at least one set'); core.render(); return; } it.sets.splice(p.j, 1); }
       else it.sets[p.j].t = t.value || undefined;
       saveSoon(); core.render();
+    } else if (t.dataset?.gin === 'r-t' && draft) {
+      const it = draft.items[+t.closest('.r-card').dataset.i], j = +t.closest('.r-set').dataset.j;
+      if (t.value === 'x') { if (it.sets.length > 1) it.sets.splice(j, 1); else toast('An exercise needs at least one set'); }
+      else it.sets[j].t = t.value;
+      renderRoutine();
+    } else if (t.dataset?.gin === 'r-rest' && draft) {
+      draft.items[+t.closest('.r-card').dataset.i].rest = Number(t.value);
     } else if (t.dataset?.gin === 'rest' && a) {
       a.items[cardOf(t)].rest = Number(t.value);
       saveSoon(); core.render();
@@ -1360,7 +1453,7 @@ window.GainlyGym = function (core) {
   });
 
   // Close via the backdrop or [data-close]
-  for (const dlg of [picker, routineSheet, workoutSheet, exSheet, reorderSheet]) {
+  for (const dlg of [picker, routineSheet, workoutSheet, exSheet, reorderSheet, routineView]) {
     dlg.addEventListener('click', (ev) => {
       if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close();
     });
