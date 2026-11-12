@@ -1264,6 +1264,55 @@ window.GainlyGym = function (core) {
     }
   }
 
+  /* ---------------- Plate calculator ---------------- */
+  // Shows under a set's kg field for barbell-type exercises: which plates go on each side.
+  const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const PLATE_COLOR = { 25: '#C8463D', 20: '#3C6FB4', 15: '#D9B43C', 10: '#3E8A55', 5: '#E8E4DC', 2.5: '#2B2826', 1.25: '#A39B92' };
+  const BAR_OPTS = [20, 15, 10, 0];
+  const plateEquip = (ex) => ['Barbell', 'EZ bar', 'Smith machine'].includes(equipOf(ex));
+  const defaultBar = (ex) => (equipOf(ex) === 'EZ bar' ? 10 : equipOf(ex) === 'Smith machine' ? 15 : 20);
+  const barFor = (ex) => { const b = G().bars && G().bars[ex.id]; return b != null ? b : defaultBar(ex); };
+  function platesFor(total, bar) {
+    let side = (total - bar) / 2;
+    if (!(side > 0)) return { side: Math.max(0, side), list: [], rest: 0 };
+    const list = [];
+    for (const p of PLATES) while (side >= p - 1e-9) { list.push(p); side = Math.round((side - p) * 1000) / 1000; }
+    return { side: (total - bar) / 2, list, rest: side };
+  }
+  function platesHTML(ex, total) {
+    const bar = barFor(ex);
+    const { side, list, rest } = platesFor(total || 0, bar);
+    const maxH = 64;
+    const plates = list.map((p) => `<span class="plate" style="--c:${PLATE_COLOR[p]};height:${Math.round(maxH * (0.38 + 0.62 * (p / 25)))}px;width:${p >= 10 ? 12 : p >= 2.5 ? 9 : 7}px" title="${fmtKg(p)} kg"></span>`).join('');
+    const counts = [];
+    for (const p of PLATES) { const n = list.filter((x) => x === p).length; if (n) counts.push(n > 1 ? `${n}×${fmtKg(p)}` : fmtKg(p)); }
+    return `<div class="plates" data-ex="${esc(ex.id)}">
+      <div class="plates__bar" aria-hidden="true"><span class="plates__sleeve"></span>${plates}<span class="plates__collar"></span><span class="plates__shaft"></span></div>
+      <p class="plates__text">${!total ? 'Type a weight to see the plates.' : total < bar ? `Lighter than the bar (${fmtKg(bar)} kg).` : list.length ? `<strong>Per side:</strong> ${counts.join(' + ')} kg` : 'Just the bar.'}
+        ${rest > 0.001 ? `<span class="plates__rest">${fmtKg(Math.round(rest * 2 * 100) / 100)} kg can’t be loaded exactly</span>` : ''}</p>
+      <div class="plates__bars" role="group" aria-label="Bar weight"><span>Bar</span>${BAR_OPTS.map((b) => `<button type="button" class="chip" data-g="bar" data-b="${b}" aria-pressed="${b === bar}">${b ? `${b} kg` : 'None'}</button>`).join('')}</div>
+    </div>`;
+  }
+  function showPlates(input) {
+    const row = input.closest('.set-row');
+    const a = act(); if (!row || !a) return;
+    const it = a.items[+row.dataset.i]; const ex = exById(it.exId);
+    document.querySelectorAll('.plates').forEach((el) => { if (el.previousElementSibling !== row) el.remove(); });
+    if (!plateEquip(ex)) return;
+    const v = parseNum(input.value);
+    const total = v != null && !Number.isNaN(v) ? v : parseNum(input.placeholder);
+    let box = row.nextElementSibling;
+    const html = platesHTML(ex, Number.isFinite(total) ? total : 0);
+    if (box && box.classList.contains('plates')) box.outerHTML = html; else row.insertAdjacentHTML('afterend', html);
+  }
+  document.addEventListener('focusin', (ev) => { if (ev.target.matches?.('.set-row [data-gin="w"]')) showPlates(ev.target); });
+  document.addEventListener('focusout', (ev) => {
+    if (!ev.target.matches?.('.set-row [data-gin="w"]')) return;
+    setTimeout(() => { if (!document.activeElement?.matches?.('.set-row [data-gin="w"]')) document.querySelectorAll('.plates').forEach((el) => el.remove()); }, 150);
+  });
+  // Tapping the bar buttons must not close the keyboard
+  document.addEventListener('pointerdown', (ev) => { if (ev.target.closest('.plates')) ev.preventDefault(); });
+
   /* ---------------- Events ---------------- */
   const act = () => G().active;
   const rowOf = (el) => { const r = el.closest('.set-row'); return r ? { i: +r.dataset.i, j: +r.dataset.j } : null; };
@@ -1329,6 +1378,14 @@ window.GainlyGym = function (core) {
         return;
       }
       case 'ex-info': return openExercise(b.dataset.ex);
+      case 'bar': {
+        const box = b.closest('.plates'); const g0 = G();
+        g0.bars = { ...(g0.bars || {}), [box.dataset.ex]: Number(b.dataset.b) };
+        saveSoon();
+        const input = box.previousElementSibling?.querySelector('[data-gin="w"]');
+        if (input) showPlates(input);
+        return;
+      }
       case 'reorder': openMenus.clear(); return openReorder();
       case 'reorder-done':
         if (a && reorderDraft) { a.items = reorderDraft; saveNow(); }
@@ -1434,6 +1491,7 @@ window.GainlyGym = function (core) {
       else if (k === 'r') st.r = n == null ? null : Math.round(n);
       else st.w = n;
       if (st.d) updateHead();
+      if (k === 'w') showPlates(t);
       saveSoon();
     } else if (k === 'name' && a) { a.name = t.value; saveSoon(); }
     else if (k === 'note' && a) { a.note = t.value; saveSoon(); }

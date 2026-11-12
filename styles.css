@@ -997,6 +997,20 @@ body[data-group="gym"] .subnav[data-group="gym"] { display: grid; animation: sub
 .set-check[aria-pressed="true"] { background: var(--good); color: var(--bg); }
 .set-check:active { scale: 0.9; }
 
+/* Plate calculator */
+.plates { margin: 4px 0 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); animation: view-in 0.18s var(--ease-out); }
+.plates__bar { position: relative; display: flex; align-items: center; gap: 2px; height: 70px; padding-left: 4px; }
+.plates__sleeve { position: absolute; left: 0; right: 0; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; background: linear-gradient(#b9b4ac, #7d7871); }
+.plate { position: relative; flex: none; border-radius: 3px; background: var(--c); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25), inset 2px 0 0 rgb(255 255 255 / 0.15); }
+.plates__collar { position: relative; flex: none; width: 6px; height: 22px; border-radius: 2px; background: #6b6660; margin-left: 2px; }
+.plates__shaft { flex: 1; }
+.plates__text { font-size: 14px; color: var(--muted); margin-top: 8px; }
+.plates__text strong { color: var(--text); }
+.plates__rest { display: block; font-size: 12px; color: var(--bad); margin-top: 2px; }
+.plates__bars { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.plates__bars > span { font-size: 12px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
+.plates__bars .chip { padding: 5px 10px; font-size: 13px; }
+
 /* Rusttimer */
 .rest {
   position: fixed;
