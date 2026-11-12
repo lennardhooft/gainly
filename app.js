@@ -154,6 +154,19 @@
     }
     return r;
   }
+  // Startdatum van je huidige cut of bulk: daar begint 'sinds start', de doelbalk en de mijlpalen.
+  const phaseStart = () => state.settings.goalStart || null;
+  function phaseSeries(key) {
+    const all = series(key);
+    const d = phaseStart();
+    if (!d) return all;
+    const base = valueAt(key, d); // laatste meting op of voor de startdatum
+    const after = all.filter((p) => p.date > d);
+    return base ? [base, ...after] : after;
+  }
+  const sinceLabel = () => (phaseStart() ? `Sinds ${fmtShort(phaseStart())}` : 'Sinds start');
+  const msId = (id) => (phaseStart() ? `${phaseStart()}:${id}` : id);
+
   function lastValue(key) { const s = series(key); return s.length ? s[s.length - 1] : null; }
 
   // Doel bepaalt welke richting 'goed' is: cutten = kleiner, bulken = groter (taille liefst stabiel).
@@ -292,7 +305,9 @@
     const w = series('weight');
     let hero = '';
     if (w.length) {
-      const first = w[0], last = w[w.length - 1];
+      const pw = phaseSeries('weight');
+      const last = w[w.length - 1];
+      const first = pw.length ? pw[0] : last;
       const ref30 = valueAt('weight', addDays(last.date, -30));
       const d30 = ref30 && ref30.date !== last.date ? last.value - ref30.value : null;
       const ref7 = valueAt('weight', addDays(last.date, -7));
@@ -314,7 +329,7 @@
         <p class="eyebrow">Gewicht · ${fmtDate(last.date)}</p>
         <p class="hero__value">${fmt(last.value)}<small>kg</small></p>
         <div class="stats">
-          <div class="stat"><span class="stat__label">Sinds start</span><span class="stat__value">${w.length > 1 ? deltaHTML(M.weight, last.value - first.value) : '—'}</span></div>
+          <div class="stat"><span class="stat__label">${sinceLabel()}</span><span class="stat__value">${pw.length > 1 ? deltaHTML(M.weight, last.value - first.value) : '—'}</span></div>
           <div class="stat"><span class="stat__label">7 dagen</span><span class="stat__value">${d7 != null ? deltaHTML(M.weight, d7) : '—'}</span></div>
           <div class="stat"><span class="stat__label">30 dagen</span><span class="stat__value">${d30 != null ? deltaHTML(M.weight, d30) : '—'}</span></div>
         </div>
@@ -330,7 +345,8 @@
     const cards = available.map((mm) => {
       const sr = series(mm.key);
       const last = sr[sr.length - 1];
-      const d = sr.length > 1 ? last.value - sr[0].value : null;
+      const ps = phaseSeries(mm.key);
+      const d = ps.length > 1 ? last.value - ps[0].value : null;
       return `<button class="metric" data-metric="${mm.key}" aria-pressed="${mm.key === ui.metric}">
         <span class="metric__label">${mm.label}</span>
         <span class="metric__value">${fmt(last.value)}<small>${mm.unit}</small></span>
@@ -350,7 +366,7 @@
         </div>
         <div class="chart" id="mainChart"></div>
       </div>
-      <h2 class="section-title">Alle maten · sinds start</h2>
+      <h2 class="section-title">Alle maten · ${sinceLabel().toLowerCase()}</h2>
       <div class="metric-grid">${cards}</div>
       <p class="hint" style="text-align:center">Houd + ingedrukt om snel alleen je gewicht in te geven.</p>`;
 
@@ -411,7 +427,8 @@
 
   function milestones() {
     const out = [];
-    const w = series('weight');
+    const w = phaseSeries('weight');
+    const since = phaseStart() ? `sinds ${fmtShort(phaseStart())}` : 'dan bij je eerste meting';
     if (w.length > 1) {
       const start = w[0].value;
       const bulk = isBulk();
@@ -421,25 +438,25 @@
         if (hit.has(k) || moved < k - 1e-9) continue;
         hit.add(k);
         out.push(bulk
-          ? { id: 'gkg' + k, date: p.date, icon: '💪', title: `+${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg meer dan bij je eerste meting.` }
-          : { id: 'kg' + k, date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg minder dan bij je eerste meting.` });
+          ? { id: msId('gkg' + k), date: p.date, icon: '💪', title: `+${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg meer ${since}.` }
+          : { id: msId('kg' + k), date: p.date, icon: '⚖️', title: `−${kgTxt(k)} kg`, text: `Je weegt ${kgTxt(k)} kg minder ${since}.` });
       }
       const g = state.settings.goalWeight;
       if (g && (bulk ? g > start : g < start)) {
         const p = w.find((x) => (bulk ? x.value >= g - 0.05 : x.value <= g + 0.05));
-        if (p) out.push({ id: 'goal' + g, date: p.date, icon: '🏆', title: 'Doel bereikt', text: `Je hebt je streefgewicht van ${fmt(g)} kg gehaald.` });
+        if (p) out.push({ id: msId('goal' + g), date: p.date, icon: '🏆', title: 'Doel bereikt', text: `Je hebt je streefgewicht van ${fmt(g)} kg gehaald.` });
       }
     }
     if (isBulk()) {
       // Bulken: groei van armen en borst
       const grow = (key, steps, icon, label) => {
-        const sr = series(key);
+        const sr = phaseSeries(key);
         if (sr.length < 2) return;
         const hit = new Set();
         for (const p of sr) for (const k of steps) {
           if (hit.has(k) || p.value - sr[0].value < k - 1e-9) continue;
           hit.add(k);
-          out.push({ id: key + '+' + k, date: p.date, icon, title: `${label} +${k} cm`, text: `Je ${label.toLowerCase()} is ${k} cm groter dan bij de start.` });
+          out.push({ id: msId(key + '+' + k), date: p.date, icon, title: `${label} +${k} cm`, text: `Je ${label.toLowerCase()} is ${k} cm groter dan bij de start.` });
         }
       };
       grow('armR', [1, 2, 3, 4, 5], '💪', 'Bovenarm');
@@ -448,17 +465,20 @@
     }
     const entries = entriesAsc();
     if (!isBulk()) { // taille- en omtrekmijlpalen alleen bij afvallen
-      const wa = series('waist');
+      const wa = phaseSeries('waist');
       if (wa.length > 1) {
         const hit = new Set();
         for (const p of wa) for (const k of MS_WAIST) {
           if (hit.has(k) || wa[0].value - p.value < k - 1e-9) continue;
           hit.add(k);
-          out.push({ id: 'waist' + k, date: p.date, icon: '📏', title: `Taille −${k} cm`, text: `Je taille is ${k} cm smaller dan bij de start.` });
+          out.push({ id: msId('waist' + k), date: p.date, icon: '📏', title: `Taille −${k} cm`, text: `Je taille is ${k} cm smaller dan bij de start.` });
         }
       }
       const firsts = {}, cur = {}, hit = new Set();
+      const d0 = phaseStart();
+      if (d0) for (const m of TAPE) { const b = valueAt(m.key, d0); if (b) { firsts[m.key] = b.value; cur[m.key] = b.value; } }
       for (const e of entries) {
+        if (d0 && e.date <= d0) continue;
         for (const m of TAPE) {
           const v = e.values[m.key];
           if (v == null) continue;
@@ -471,7 +491,7 @@
         for (const k of MS_TAPE) {
           if (hit.has(k) || lost < k - 1e-9) continue;
           hit.add(k);
-          out.push({ id: 'tape' + k, date: e.date, icon: '🎯', title: `−${k} cm omtrek`, text: `Al je omtrekken samen zijn ${k} cm kleiner dan bij de start.` });
+          out.push({ id: msId('tape' + k), date: e.date, icon: '🎯', title: `−${k} cm omtrek`, text: `Al je omtrekken samen zijn ${k} cm kleiner dan bij de start.` });
         }
       }
     }
@@ -546,7 +566,10 @@
       el.innerHTML = emptyState('Nog niets te vergelijken', 'Je hebt minstens twee metingen op verschillende datums nodig.', 'add-measure', 'Meting toevoegen');
       return;
     }
-    if (!dates.includes(ui.cmpA)) ui.cmpA = dates[0];
+    if (!dates.includes(ui.cmpA)) {
+      const d0 = phaseStart();
+      ui.cmpA = (d0 && [...dates].reverse().find((d) => d <= d0)) || dates[0];
+    }
     if (!dates.includes(ui.cmpB)) ui.cmpB = dates[dates.length - 1];
     const A = ui.cmpA, B = ui.cmpB;
     const opts = (sel) => [...dates].reverse().map((d) => `<option value="${d}" ${d === sel ? 'selected' : ''}>${fmtDate(d)}</option>`).join('');
@@ -735,6 +758,8 @@
           <label class="field"><span class="field__label">Lengte <small>cm</small></span><input name="height" inputmode="decimal" value="${s.height ? fmt(s.height, 0) : ''}" placeholder="180"></label>
           <label class="field"><span class="field__label">Streefgewicht <small>kg</small></span><input name="goalWeight" inputmode="decimal" value="${s.goalWeight ? fmt(s.goalWeight) : ''}" placeholder="75,0"></label>
         </div>
+        <label class="field"><span class="field__label">${isBulk() ? 'Bulk' : 'Cut'} gestart op</span><input type="date" name="goalStart" value="${s.goalStart || ''}"></label>
+        <p class="hint" style="margin-top:-6px">Vanaf deze datum rekenen "sinds start", je doelbalk en je mijlpalen. Leeg = vanaf je eerste meting.</p>
         <button class="button button--primary" type="submit">Bewaar profiel</button>
       </form>
 
@@ -1241,9 +1266,11 @@
     if (t.dataset.tab) return go(t.dataset.tab);
     if (t.dataset.tabGo) return go(t.dataset.tabGo);
     if (t.dataset.goalType) {
-      state.settings = { ...state.settings, goalType: t.dataset.goalType };
+      if ((state.settings.goalType || 'cut') === t.dataset.goalType) return;
+      // Nieuwe fase: start vandaag (aan te passen onder Profiel).
+      state.settings = { ...state.settings, goalType: t.dataset.goalType, goalStart: todayISO() };
       save(); syncMilestones(false);
-      toast(t.dataset.goalType === 'bulk' ? 'Doel: bijkomen. Groei kleurt nu groen.' : 'Doel: afvallen. Kleiner kleurt nu groen.');
+      toast(`${t.dataset.goalType === 'bulk' ? 'Bulk' : 'Cut'} gestart vandaag. Pas de datum aan als dat niet klopt.`);
       return render();
     }
     if (t.dataset.mode) return setTheme({ mode: t.dataset.mode });
@@ -1306,7 +1333,8 @@
     f.height.setAttribute('aria-invalid', hBad);
     f.goalWeight.setAttribute('aria-invalid', gBad);
     if (hBad || gBad) { toast('Controleer je lengte en streefgewicht'); return; }
-    state.settings = { ...state.settings, height, goalWeight };
+    const goalStart = f.goalStart.value || null;
+    state.settings = { ...state.settings, height, goalWeight, goalStart };
     save();
     syncMilestones(false);
     toast('Profiel bewaard');
