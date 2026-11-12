@@ -642,7 +642,66 @@ window.GainlyGym = function (core) {
   }
 
   /* ---------------- View: Exercises ---------------- */
-  const exUi = { q: '', group: '', shown: 60 };
+  const exUi = { q: '', group: '', shown: 60, eq: new Set(), mu: new Set(), open: null };
+
+  // Equipment and muscles per exercise: from the name (Hevy-style "(Barbell)") or the database, else from the muscle group.
+  const EQUIP = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith machine', 'EZ bar', 'Plate', 'Bodyweight', 'Cardio machine', 'Other'];
+  const DB_EQ = { barbell: 'Barbell', dumbbell: 'Dumbbell', cable: 'Cable', machine: 'Machine', 'e-z curl bar': 'EZ bar', 'body only': 'Bodyweight' };
+  function equipOf(ex) {
+    const n = ex.name.toLowerCase();
+    if (ex.group === 'Cardio') return 'Cardio machine';
+    if (/smith/.test(n)) return 'Smith machine';
+    if (/\bez\b|e-z/.test(n)) return 'EZ bar';
+    if (/barbell|\(bar\)|deadlift \(|squat \(barbell|t bar/.test(n)) return 'Barbell';
+    if (/dumbbell/.test(n)) return 'Dumbbell';
+    if (/cable|pushdown|crossover|face pull|pulldown|rope/.test(n)) return 'Cable';
+    if (/machine|pec deck|leg press|hack squat|leg extension|leg curl|calf raise|abduction|adduction|lever/.test(n)) return 'Machine';
+    if (/plate/.test(n)) return 'Plate';
+    const info = infoOf(ex);
+    if (info && DB_EQ[info.e]) return DB_EQ[info.e];
+    if (ex.type === 'bw') return 'Bodyweight';
+    return 'Other';
+  }
+  const MUSCLES = [['chest', 'Chest'], ['shoulders', 'Shoulders'], ['lats', 'Lats'], ['middle back', 'Upper back'], ['lower back', 'Lower back'], ['traps', 'Traps'],
+    ['biceps', 'Biceps'], ['triceps', 'Triceps'], ['forearms', 'Forearms'], ['abdominals', 'Abs'], ['quadriceps', 'Quads'], ['hamstrings', 'Hamstrings'],
+    ['glutes', 'Glutes'], ['calves', 'Calves'], ['adductors', 'Adductors'], ['abductors', 'Abductors'], ['neck', 'Neck'], ['cardio', 'Cardio']];
+  function musclesOf(ex) {
+    const info = infoOf(ex);
+    if (info && info.p && info.p.length) return info.p;
+    const n = ex.name.toLowerCase();
+    switch (ex.group) {
+      case 'Chest': return ['chest'];
+      case 'Back': return /shrug|kelso/.test(n) ? ['traps'] : /extension|hyperext/.test(n) ? ['lower back'] : /row/.test(n) ? ['middle back'] : ['lats'];
+      case 'Shoulders': return ['shoulders'];
+      case 'Arms': return /wrist|forearm|reverse curl/.test(n) ? ['forearms'] : /curl/.test(n) ? ['biceps'] : ['triceps'];
+      case 'Legs': return /calf/.test(n) ? ['calves'] : /adduct/.test(n) ? ['adductors'] : /abduct/.test(n) ? ['abductors'] : /thrust|glute|kickback/.test(n) ? ['glutes'] : /leg curl|romanian|deadlift|stiff/.test(n) ? ['hamstrings'] : ['quadriceps'];
+      case 'Core': return ['abdominals'];
+      case 'Cardio': return ['cardio'];
+      default: return [];
+    }
+  }
+  function exFiltered() {
+    return filteredExercises(exUi.q, '').filter((e) => (!exUi.eq.size || exUi.eq.has(equipOf(e))) && (!exUi.mu.size || musclesOf(e).some((m) => exUi.mu.has(m))));
+  }
+  function filtersHTML() {
+    const all = exAll();
+    const eqCount = new Map(), muCount = new Map();
+    for (const e of all) {
+      eqCount.set(equipOf(e), (eqCount.get(equipOf(e)) || 0) + 1);
+      for (const m of new Set(musclesOf(e))) muCount.set(m, (muCount.get(m) || 0) + 1);
+    }
+    const btn = (f, label, set) => `<button type="button" class="filter-btn${set.size ? ' is-active' : ''}" data-g="ex-filter" data-f="${f}" aria-expanded="${exUi.open === f}">
+        ${label}${set.size ? ` <span class="filter-btn__n">${set.size}</span>` : ''}<svg viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1.5 5 5 5-5"/></svg></button>`;
+    const opts = exUi.open === 'eq'
+      ? EQUIP.filter((k) => eqCount.get(k)).map((k) => [k, k, eqCount.get(k)])
+      : exUi.open === 'mu' ? MUSCLES.filter(([k]) => muCount.get(k)).map(([k, l]) => [k, l, muCount.get(k)]) : [];
+    const set = exUi.open === 'eq' ? exUi.eq : exUi.mu;
+    return `<div class="filters">
+        ${btn('eq', 'Equipment', exUi.eq)}${btn('mu', 'Muscles', exUi.mu)}
+        ${exUi.eq.size || exUi.mu.size ? '<button type="button" class="inline-link filters__clear" data-g="ex-clear">Clear</button>' : ''}
+      </div>
+      ${exUi.open ? `<div class="filter-panel">${opts.map(([k, l, c]) => `<button type="button" class="chip" data-g="ex-fchip" data-f="${exUi.open}" data-v="${esc(k)}" aria-pressed="${set.has(k)}">${esc(l)} <span class="chip__n">${c}</span></button>`).join('')}</div>` : ''}`;
+  }
   function exStats(exId) {
     const sessions = [];
     for (const w of [...G().workouts].sort((a, b) => a.start - b.start)) {
@@ -672,7 +731,7 @@ window.GainlyGym = function (core) {
     </div>`;
   }
   function exListItems() {
-    const all = filteredExercises(exUi.q, exUi.group);
+    const all = exFiltered();
     if (!all.length) return '<p class="hint" style="text-align:center;padding:20px 0">Nothing found.</p>';
     const list = all.slice(0, exUi.shown);
     return `<p class="hint" style="margin:4px 4px 8px">${plural(all.length, 'exercise', 'exercises')}</p><div class="list">${list.map((e) => {
@@ -691,7 +750,7 @@ window.GainlyGym = function (core) {
     const el = viewEl('gymEx');
     el.innerHTML = `
       <input class="search" type="search" data-gin="ex-q" placeholder="Search ${exAll().length} exercises" value="${esc(exUi.q)}" aria-label="Search exercises">
-      ${chipsHTML(exUi.group, 'ex-group')}
+      <div id="exFilters">${filtersHTML()}</div>
       <div id="exList">${exListItems()}</div>
       <button type="button" class="button" data-g="new-custom">+ Create custom exercise</button>
       <p class="hint" style="text-align:center">Images and instructions: free-exercise-db (public domain).</p>`;
@@ -1172,7 +1231,13 @@ window.GainlyGym = function (core) {
         saveNow(); exSheet.close(); core.render();
         return;
       }
-      case 'ex-group': exUi.group = b.dataset.group; exUi.shown = 60; return renderExercises();
+      case 'ex-filter': exUi.open = exUi.open === b.dataset.f ? null : b.dataset.f; $('#exFilters').innerHTML = filtersHTML(); return;
+      case 'ex-fchip': {
+        const set = b.dataset.f === 'eq' ? exUi.eq : exUi.mu;
+        if (set.has(b.dataset.v)) set.delete(b.dataset.v); else set.add(b.dataset.v);
+        exUi.shown = 60; $('#exFilters').innerHTML = filtersHTML(); $('#exList').innerHTML = exListItems(); return;
+      }
+      case 'ex-clear': exUi.eq.clear(); exUi.mu.clear(); exUi.open = null; exUi.shown = 60; $('#exFilters').innerHTML = filtersHTML(); $('#exList').innerHTML = exListItems(); return;
       case 'ex-more': exUi.shown += 100; $('#exList').innerHTML = exListItems(); return;
       case 'pick-group': pk.group = b.dataset.group; pk.shown = 60; return renderPicker();
       case 'pick-more': pk.shown += 100; return renderPickerList();
