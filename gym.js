@@ -383,6 +383,67 @@ window.GainlyGym = function (core) {
   }
   setInterval(tick, 250);
 
+  /* ---------------- Drag to reorder ---------------- */
+  // Hold the grip (≡) of an item and drag it; other items slide aside. Auto-scrolls near the edges.
+  function makeSortable(list, onMove) {
+    list.addEventListener('pointerdown', (ev) => {
+      const h = ev.target.closest('.drag-handle');
+      if (!h || !list.contains(h)) return;
+      const item = h.closest('[data-sort]');
+      if (!item) return;
+      ev.preventDefault();
+      const items = [...list.querySelectorAll(':scope > [data-sort]')];
+      const from = items.indexOf(item);
+      const rects = items.map((el) => el.getBoundingClientRect());
+      const scroller = list.closest('.sheet__body') || document.scrollingElement;
+      const startScroll = scroller.scrollTop, startY = ev.clientY;
+      const step = rects.length > 1 ? rects[1].top - rects[0].top : rects[0].height;
+      let lastY = ev.clientY, to = from, raf = 0, done = false;
+      item.classList.add('is-dragging');
+      list.classList.add('is-sorting');
+      try { h.setPointerCapture(ev.pointerId); } catch { /* ok */ }
+      navigator.vibrate?.(8);
+      const update = () => {
+        const dy = lastY - startY + (scroller.scrollTop - startScroll);
+        item.style.transform = `translateY(${dy}px)`;
+        const center = rects[from].top + rects[from].height / 2 + dy;
+        to = from;
+        rects.forEach((r, i) => {
+          const mid = r.top + r.height / 2;
+          if (i < from && center < mid && i < to) to = i;
+          if (i > from && center > mid) to = i;
+        });
+        items.forEach((el, i) => {
+          if (el === item) return;
+          const shift = from < to && i > from && i <= to ? -step : to < from && i >= to && i < from ? step : 0;
+          el.style.transform = shift ? `translateY(${shift}px)` : '';
+        });
+      };
+      const loop = () => {
+        if (done) return;
+        const box = scroller === document.scrollingElement ? { top: 0, bottom: innerHeight - 140 } : scroller.getBoundingClientRect();
+        const edge = 70;
+        const v = lastY < box.top + edge ? -(box.top + edge - lastY) / 5 : lastY > box.bottom - edge ? (lastY - (box.bottom - edge)) / 5 : 0;
+        if (v) { scroller.scrollTop += v; update(); }
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+      const move = (e) => { lastY = e.clientY; update(); };
+      const end = () => {
+        done = true; cancelAnimationFrame(raf);
+        h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
+        items.forEach((el) => { el.style.transform = ''; });
+        item.classList.remove('is-dragging'); list.classList.remove('is-sorting');
+        if (to !== from) onMove(from, to);
+      };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', end);
+      h.addEventListener('pointercancel', end);
+    });
+  }
+  const GRIP_HTML = '<button type="button" class="drag-handle" aria-label="Drag to reorder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg></button>';
+  const moveItem = (arr, from, to) => { const [x] = arr.splice(from, 1); arr.splice(to, 0, x); };
+
   /* ---------------- View: Workout ---------------- */
   const TYPE_LABEL = { w: 'W', d: 'D', f: 'F' };
   const REST_OPTS = [0, 30, 60, 90, 120, 150, 180, 240, 300];
@@ -453,6 +514,7 @@ window.GainlyGym = function (core) {
       ${a.items.map(exCardHTML).join('')}
       ${a.items.length ? '' : '<p class="hint" style="text-align:center;margin:8px 0">Add your first exercise.</p>'}
       <button type="button" class="button button--primary" data-g="add-ex">+ Add exercise</button>
+      ${a.items.length > 1 ? '<button type="button" class="button" data-g="reorder">⇅ Reorder exercises</button>' : ''}
       <label class="field" style="margin:4px 0 0"><span class="field__label">Note</span><textarea data-gin="note" rows="2" placeholder="How did it go?">${esc(a.note)}</textarea></label>
       <div class="button-row">
         <button type="button" class="button button--danger" data-g="cancel">Discard</button>
@@ -730,6 +792,26 @@ window.GainlyGym = function (core) {
     </form>`;
   }
 
+  /* ---------------- Sheet: reorder a running workout ---------------- */
+  const reorderSheet = $('#reorderSheet');
+  let reorderDraft = null;
+  function openReorder() {
+    reorderDraft = [...G().active.items];
+    renderReorder();
+    reorderSheet.showModal();
+  }
+  function renderReorder() {
+    $('#reorderBody').innerHTML = `<p class="hint" style="margin:0 0 10px">Hold ≡ and drag an exercise to a new spot.</p>
+      <div class="list sort-list" id="reorderList">${reorderDraft.map((it) => {
+        const ex = exById(it.exId);
+        const done = it.sets.filter((st) => st.d).length;
+        return `<div class="r-item r-item--row" data-sort>
+          <div class="r-item__main">${GRIP_HTML}${thumbHTML(ex)}<div><div class="list__title">${esc(ex.name)}</div><div class="list__sub">${plural(it.sets.length, 'set', 'sets')}${done ? ` · ${done} done` : ''}</div></div></div>
+        </div>`;
+      }).join('')}</div>`;
+    makeSortable($('#reorderList'), (from, to) => { moveItem(reorderDraft, from, to); renderReorder(); });
+  }
+
   /* ---------------- Sheet: edit routine ---------------- */
   const routineSheet = $('#routineSheet');
   let draft = null;
@@ -743,22 +825,20 @@ window.GainlyGym = function (core) {
   function renderRoutine() {
     $('#routineBody').innerHTML = `
       <label class="field"><span class="field__label">Name</span><input data-gin="r-name" value="${esc(draft.name)}" placeholder="E.g. Push" autocomplete="off"></label>
-      ${draft.items.length ? `<div class="list" style="margin-bottom:12px">${draft.items.map((it, i) => {
+      ${draft.items.length ? `<div class="list sort-list" id="routineList" style="margin-bottom:12px">${draft.items.map((it, i) => {
         const ex = exById(it.exId);
-        return `<div class="r-item" data-i="${i}">
-          <div class="r-item__main">${thumbHTML(ex)}<div><div class="list__title">${esc(ex.name)}</div><div class="list__sub">${ex.group} · rest ${restText(it.rest ?? 90)}</div></div></div>
+        return `<div class="r-item" data-i="${i}" data-sort>
+          <div class="r-item__main"><button type="button" class="drag-handle" aria-label="Drag to reorder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg></button>${thumbHTML(ex)}<div><div class="list__title">${esc(ex.name)}</div><div class="list__sub">${ex.group} · rest ${restText(it.rest ?? 90)}</div></div></div>
           <div class="stepper" aria-label="Number of sets">
             <button type="button" data-g="r-minus" aria-label="Fewer sets">−</button><span>${it.n} sets</span><button type="button" data-g="r-plus" aria-label="More sets">+</button>
           </div>
-          <div class="r-item__tools">
-            <button type="button" data-g="r-up" aria-label="Move up" ${i ? '' : 'disabled'}>↑</button>
-            <button type="button" data-g="r-down" aria-label="Move down" ${i < draft.items.length - 1 ? '' : 'disabled'}>↓</button>
-            <button type="button" data-g="r-del" aria-label="Remove ${esc(ex.name)}">×</button>
-          </div>
+          <button type="button" class="r-item__del" data-g="r-del" aria-label="Remove ${esc(ex.name)}">×</button>
         </div>`;
       }).join('')}</div>` : '<p class="hint">No exercises in this routine yet.</p>'}
       <button type="button" class="button" data-g="r-add">+ Add exercise</button>
       ${draft.isNew ? '' : '<button type="button" class="button button--danger" data-g="r-delete" style="margin-top:12px">Delete routine</button>'}`;
+    const list = $('#routineList');
+    if (list) makeSortable(list, (from, to) => { moveItem(draft.items, from, to); renderRoutine(); });
   }
   function saveRoutine() {
     const name = (draft.name || '').trim();
@@ -1025,6 +1105,10 @@ window.GainlyGym = function (core) {
         return;
       }
       case 'ex-info': return openExercise(b.dataset.ex);
+      case 'reorder': openMenus.clear(); return openReorder();
+      case 'reorder-done':
+        if (a && reorderDraft) { a.items = reorderDraft; saveNow(); }
+        reorderSheet.close(); core.render(); return;
       case 'finish': return finishWorkout();
       case 'cancel':
         if (!await core.ask('Discard this workout? Nothing you entered will be saved.', 'Discard')) return;
@@ -1087,11 +1171,6 @@ window.GainlyGym = function (core) {
         const it = draft.items[+b.closest('.r-item').dataset.i];
         it.n = Math.max(1, Math.min(20, it.n + (b.dataset.g === 'r-plus' ? 1 : -1)));
         if (it.types) { while (it.types.length < it.n) it.types.push(''); it.types.length = it.n; }
-        return renderRoutine();
-      }
-      case 'r-up': case 'r-down': {
-        const i = +b.closest('.r-item').dataset.i, j = b.dataset.g === 'r-up' ? i - 1 : i + 1;
-        [draft.items[i], draft.items[j]] = [draft.items[j], draft.items[i]];
         return renderRoutine();
       }
       case 'r-del': draft.items.splice(+b.closest('.r-item').dataset.i, 1); return renderRoutine();
@@ -1159,13 +1238,14 @@ window.GainlyGym = function (core) {
   });
 
   // Close via the backdrop or [data-close]
-  for (const dlg of [picker, routineSheet, workoutSheet, exSheet]) {
+  for (const dlg of [picker, routineSheet, workoutSheet, exSheet, reorderSheet]) {
     dlg.addEventListener('click', (ev) => {
       if (ev.target === dlg || ev.target.closest('[data-close]')) dlg.close();
     });
   }
   $('#pickDone').dataset.g = 'pick-done';
   $('#routineSave').dataset.g = 'r-save';
+  $('#reorderDone').dataset.g = 'reorder-done';
   workoutSheet.addEventListener('close', () => { if (ui.view === 'gymHistory' || ui.view === 'gym') core.render(); });
 
   tick();
